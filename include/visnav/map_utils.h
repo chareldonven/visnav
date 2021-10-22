@@ -33,8 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include <fstream>
-
-#include <tbb/task_scheduler_init.h>
+#include <thread>
 
 #include <ceres/ceres.h>
 
@@ -247,7 +246,7 @@ void bundle_adjustment(const Corners& feature_corners,
   ceres::Solver::Options ceres_options;
   ceres_options.max_num_iterations = options.max_num_iterations;
   ceres_options.linear_solver_type = ceres::SPARSE_SCHUR;
-  ceres_options.num_threads = tbb::task_scheduler_init::default_num_threads();
+  ceres_options.num_threads = std::thread::hardware_concurrency();
   ceres::Solver::Summary summary;
   Solve(ceres_options, &problem, &summary);
   switch (options.verbosity_level) {

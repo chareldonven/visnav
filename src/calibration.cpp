@@ -38,7 +38,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sophus/se3.hpp>
 
 #include <tbb/concurrent_unordered_map.h>
-#include <tbb/task_scheduler_init.h>
 
 #include <pangolin/display/image_view.h>
 #include <pangolin/gl/gldraw.h>
@@ -372,7 +371,7 @@ void optimize() {
   options.gradient_tolerance = 0.01 * Sophus::Constants<double>::epsilon();
   options.function_tolerance = 0.01 * Sophus::Constants<double>::epsilon();
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-  options.num_threads = tbb::task_scheduler_init::default_num_threads();
+  options.num_threads = std::thread::hardware_concurrency();
 
   // Solve
   ceres::Solver::Summary summary;

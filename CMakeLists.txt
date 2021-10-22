@@ -90,9 +90,7 @@ message(STATUS "Found OpenGV headers in: ${opengv_DIR}")
 
 # to use link to target "TBB"
 find_package(TBB REQUIRED)
-message(STATUS "Found TBB headers in: ${TBB_INCLUDE_DIRS}")
-# Disable warnings about deprecated parts in TBB
-add_definitions(-DTBB_SUPPRESS_DEPRECATED_MESSAGES)
+message(STATUS "Found TBB ${TBB_VERSION_MAJOR}.${TBB_VERSION_MINOR} (interface version ${TBB_INTERFACE_VERSION}) headers in: ${TBB_INCLUDE_DIRS}")
 
 
 # to use link to target "OpenCV"
@@ -112,13 +110,13 @@ add_executable(test_ceres_se3 src/test_ceres_se3.cpp)
 target_link_libraries(test_ceres_se3 Ceres::ceres)
 
 add_executable(calibration src/calibration.cpp)
-target_link_libraries(calibration Ceres::ceres pangolin TBB)
+target_link_libraries(calibration Ceres::ceres pangolin TBB::tbb)
 
 add_executable(sfm src/sfm.cpp)
-target_link_libraries(sfm Ceres::ceres pangolin TBB OpenCV opengv)
+target_link_libraries(sfm Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
 add_executable(odometry src/odometry.cpp)
-target_link_libraries(odometry Ceres::ceres pangolin TBB OpenCV opengv)
+target_link_libraries(odometry Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
 
 

@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sophus/se3.hpp>
 
 #include <tbb/concurrent_unordered_map.h>
-#include <tbb/tbb.h>
+#include <tbb/parallel_for.h>
 
 #include <pangolin/display/image_view.h>
 #include <pangolin/gl/gldraw.h>

@@ -22,13 +22,13 @@ add_executable(test_ex2 src/test_ex2.cpp)
 target_link_libraries(test_ex2 gtest gtest_main Ceres::ceres)
 
 add_executable(test_ex3 src/test_ex3.cpp)
-target_link_libraries(test_ex3 gtest gtest_main Ceres::ceres pangolin TBB OpenCV opengv)
+target_link_libraries(test_ex3 gtest gtest_main Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
 add_executable(test_ex4 src/test_ex4.cpp)
-target_link_libraries(test_ex4 gtest gtest_main Ceres::ceres opengv TBB)
+target_link_libraries(test_ex4 gtest gtest_main Ceres::ceres opengv TBB::tbb)
 
 add_executable(test_ex5 src/test_ex5.cpp)
-target_link_libraries(test_ex5 gtest gtest_main Ceres::ceres opengv TBB)
+target_link_libraries(test_ex5 gtest gtest_main Ceres::ceres opengv TBB::tbb)
 
 
 
