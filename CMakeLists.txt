@@ -119,6 +119,12 @@ add_executable(odometry src/odometry.cpp)
 target_link_libraries(odometry Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
 
+add_executable(opticalflow src/opticalflow.cpp)
+target_link_libraries(opticalflow Ceres::ceres pangolin TBB::tbb OpenCV opengv)
+
+add_executable(test_openCV_lk src/test_opencv_lk.cpp)
+target_link_libraries(test_openCV_lk Ceres::ceres pangolin TBB::tbb OpenCV opengv)
+
 
 enable_testing()
 add_subdirectory(test)
