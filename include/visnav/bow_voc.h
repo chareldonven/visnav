@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unordered_map>
 
 #include <cereal/archives/binary.hpp>
-
+#include <cereal/archives/json.hpp>
 #include <visnav/common_types.h>
 
 namespace cereal {
@@ -65,9 +65,18 @@ class BowVocabulary {
     // feature and descriptor of the cluster centroid. Iterate until you reach
     // the leaf node. Save m_nodes[id].word_id and m_nodes[id].weight of the
     // leaf node to the corresponding variables.
-    UNUSED(feature);
-    UNUSED(word_id);
-    UNUSED(weight);
+    // Start at the root
+    NodeId current_id = 0;
+    // Traverse the tree until a leaf
+    while (!m_nodes[current_id].isLeaf()) {
+      // Get id of the child with minimal hamming distance to the feature
+      const NodeId& next_id = compute_next_id(current_id, feature);
+
+      current_id = next_id;
+    }
+
+    word_id = m_nodes[current_id].word_id;
+    weight = m_nodes[current_id].weight;
   }
 
   inline void transform(const std::vector<TDescriptor>& features,
@@ -81,9 +90,37 @@ class BowVocabulary {
     // TODO SHEET 3: transform the entire vector of features from an image to
     // the BoW representation (you can use transformFeatureToWord function). Use
     // L1 norm to normalize the resulting BoW vector.
-    UNUSED(features);
-  }
 
+    std::unordered_map<WordId, WordValue> map_of_words;
+    for (int i = 0; i < static_cast<int>(features.size()); ++i) {
+      const TDescriptor& feature = features[i];
+      WordId wordID;
+      WordValue weight;
+      // Get the respective word for the feature
+      transformFeatureToWord(feature, wordID, weight);
+      // If this word was not in the map and if its weight is not 0, add it to
+      // the map
+      if (map_of_words.find(wordID) == map_of_words.end()) {
+        if (weight != 0) {
+          map_of_words[wordID] = weight;
+        }
+      } else {
+        // If the word is already in the map update its weight
+        map_of_words[wordID] += weight;
+      }
+    }
+    // Needed for L1 normalization
+    double sum = 0;
+    for (const auto& kv : map_of_words) {
+      // Store the result in the bow vector
+      v.emplace_back(kv);
+      sum += std::abs(kv.second);
+    }
+    // Normalize
+    for (auto& kv : v) {
+      kv.second /= sum;
+    }
+  }
   void save(const std::string& filename) const {
     std::ofstream os(filename, std::ios::binary);
 
@@ -112,6 +149,30 @@ class BowVocabulary {
       std::cout << "Failed to load vocabulary " << filename << std::endl;
       std::abort();
     }
+  }
+
+ private:
+  int compute_hamming_distance(const TDescriptor& bitset_1,
+                               const TDescriptor& bitset_2) const {
+    return (bitset_1 ^ bitset_2).count();
+  }
+
+  NodeId compute_next_id(const NodeId& current_id,
+                         const TDescriptor& feature) const {
+    NodeId id_min = 0;
+
+    int minimal_distance = 257;
+    for (size_t j = 0; j < m_nodes[current_id].children.size(); ++j) {
+      const auto id_child = m_nodes[current_id].children[j];
+      const auto& descriptor_child = m_nodes[id_child].descriptor;
+      const auto distance = compute_hamming_distance(feature, descriptor_child);
+
+      if (distance < minimal_distance) {
+        minimal_distance = distance;
+        id_min = id_child;
+      }
+    }
+    return id_min;
   }
 
  protected:

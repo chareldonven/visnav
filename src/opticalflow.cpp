@@ -807,7 +807,8 @@ bool next_step() {
 
   auto previous_frame = current_frame - 1;
 
-  FrameCamId fcid_prev(previous_frame, 0), fcid_current(current_frame, 0);
+  FrameCamId fcid_prev(previous_frame, 0), fcid_stereo(previous_frame, 1),
+      fcid_current(current_frame, 0);
 
   std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
       projected_points;
@@ -824,24 +825,33 @@ bool next_step() {
   cv::Mat image_previous(img_previous.h, img_previous.w, CV_8U,
                          img_previous.ptr);
 
-  // Mat mask = Mat::zeros(image_previous.size(), image_previous.type());
-
-  // std::vector<cv::Point2f> points_previous;
-  // goodFeaturesToTrack(image_previous, points_previous,
-  // num_features_per_image, 0.01, 8);
-
   pangolin::ManagedImage<uint8_t> img_current =
       pangolin::LoadImage(images[fcid_current]);
+  cv::Mat image_current(img_current.h, img_current.w, CV_8U, img_current.ptr);
+
+  pangolin::ManagedImage<uint8_t> img_stereo =
+      pangolin::LoadImage(images[fcid_stereo]);
+  cv::Mat image_stereo(img_stereo.h, img_stereo.w, CV_8U, img_stereo.ptr);
 
   vector<uchar> status;
   vector<float> err;
 
-  cv::Mat image_current(img_current.h, img_current.w, CV_8U, img_current.ptr);
+  calcOpticalFlowPyrLK(image_previous, image_stereo, tracking_points[0],
+                       tracking_points[1], status, err);
 
-  calcOpticalFlowPyrLK(image_previous, image_current, tracking_points[0],
-                       tracking_points[0], status, err);
+  // Outlier detection for optical flow stereo
 
-  // std::vector<cv::Point2f> points_result;
+  /*
+   * Check status
+   * Forward-backward checking
+   *
+   * Where do we save the stereo tracked points?
+   * Inliers should be tracked into other frames -> tracking_points[]
+   * tracking_points should have the right structure
+   *
+   *
+   *
+   *
   size_t i, k;
   for (i = k = 0; i < tracking_points[1].size(); i++) {
     if (!status[i]) continue;
@@ -849,21 +859,25 @@ bool next_step() {
     circle(image_previous, tracking_points[1][i], 3, Scalar(0, 255, 0), -1, 8);
   }
   tracking_points[1].resize(k);
+   * */
 
-  // Select good points
-  // if (status[i] == 1) {
-  // points_result.push_back(points_current[i]);
-  // line(mask, points_current[i], points_previous[i], colors[i], 2);
-  // circle(image_current, points_current[i], 5, colors[i], -1);
-  // }
+  status.clear();
+  err.clear();
 
+  calcOpticalFlowPyrLK(image_previous, image_current, tracking_points[0],
+                       tracking_points[1], status, err);
+
+  // Outlier detection for optical flow frame to frame
+
+  // Optimize
   /*
-    Mat img;
-    add(image_current, mask, img);
-  */
-  show_optical_flow(image_previous);
-
-  // find_matches_landmarks();
+   * Given:
+   * 2D positions in Frame t - 1
+   * 2D tracked positions into Frame t
+   *
+   * minimize for the transformation with Ceres
+   * => Call optimize:
+   * */
 
   // localize_camera();
 

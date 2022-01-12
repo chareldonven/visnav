@@ -340,19 +340,26 @@ void compute_projections() {
   for (const auto& kv : calib_corners) {
     CalibCornerData ccd;
 
+    // changed the location of these two lines because they do not depend on i:
+
+    // Transformation from body (IMU) frame to world frame
+    Sophus::SE3d T_w_i = vec_T_w_i[kv.first.frame_id];
+    // Transformation from camera to body (IMU) frame
+    Sophus::SE3d T_i_c = calib_cam.T_i_c[kv.first.cam_id];
+
+    auto T_c_w = T_i_c.inverse() * T_w_i.inverse();
+
+    const auto& intrinsics = calib_cam.intrinsics[kv.first.cam_id];
+
     for (size_t i = 0; i < aprilgrid.aprilgrid_corner_pos_3d.size(); i++) {
-      // Transformation from body (IMU) frame to world frame
-      Sophus::SE3d T_w_i = vec_T_w_i[kv.first.frame_id];
-      // Transformation from camera to body (IMU) frame
-      Sophus::SE3d T_i_c = calib_cam.T_i_c[kv.first.cam_id];
       // 3D coordinates of the aprilgrid corner in the world frame
       Eigen::Vector3d p_3d = aprilgrid.aprilgrid_corner_pos_3d[i];
 
-      // TODO SHEET 2: project point
-      UNUSED(T_w_i);
-      UNUSED(T_i_c);
-      UNUSED(p_3d);
       Eigen::Vector2d p_2d;
+
+      Eigen::Vector3d p = T_c_w * p_3d;
+
+      p_2d = intrinsics->project(p);
 
       ccd.corners.push_back(p_2d);
     }
@@ -365,7 +372,40 @@ void optimize() {
   // Build the problem.
   ceres::Problem problem;
 
-  // TODO SHEET 2: setup optimization problem
+  // my code:
+  for (const auto& kv : calib_corners) {
+    const auto& cam_id = kv.first.cam_id;
+    const auto& frame_id = kv.first.frame_id;
+    Sophus::SE3d& T_w_i = vec_T_w_i[frame_id];
+    Sophus::SE3d& T_i_c = calib_cam.T_i_c[cam_id];
+    auto& intrinsics = calib_cam.intrinsics[cam_id];
+    const auto& calib_corner_data = kv.second;
+    for (size_t i = 0; i < calib_corner_data.corners.size(); i++) {
+      Eigen::Vector3d p_3d =
+          aprilgrid.aprilgrid_corner_pos_3d[calib_corner_data.corner_ids[i]];
+      Eigen::Vector2d p_2d = calib_corner_data.corners[i];
+
+      problem.AddParameterBlock(T_w_i.data(), Sophus::SE3d::num_parameters,
+                                new Sophus::test::LocalParameterizationSE3);
+      problem.AddParameterBlock(T_i_c.data(), Sophus::SE3d::num_parameters,
+                                new Sophus::test::LocalParameterizationSE3);
+      problem.AddParameterBlock(intrinsics->data(), 8);
+
+      ReprojectionCostFunctor* cost_functor =
+          new ReprojectionCostFunctor(p_2d, p_3d, cam_model);
+      ceres::CostFunction* cost_function =
+          new ceres::AutoDiffCostFunction<ReprojectionCostFunctor, 2,
+                                          Sophus::SE3d::num_parameters,
+                                          Sophus::SE3d::num_parameters, 8>(
+              cost_functor);
+      problem.AddResidualBlock(cost_function, nullptr, T_w_i.data(),
+                               T_i_c.data(), intrinsics->data());
+
+      if (cam_id == 0)
+        problem.SetParameterBlockConstant(calib_cam.T_i_c[cam_id].data());
+    }
+  }
+  // End of my code
 
   ceres::Solver::Options options;
   options.gradient_tolerance = 0.01 * Sophus::Constants<double>::epsilon();
@@ -386,7 +426,6 @@ void optimize() {
 
   compute_projections();
 }
-
 void save_calib() {
   std::ofstream os("opt_calib.json");
 

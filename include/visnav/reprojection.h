@@ -52,6 +52,7 @@ struct ReprojectionCostFunctor {
       : p_2d(p_2d), p_3d(p_3d), cam_model(cam_model) {}
 
   template <class T>
+
   bool operator()(T const* const sT_w_i, T const* const sT_i_c,
                   T const* const sIntr, T* sResiduals) const {
     Eigen::Map<Sophus::SE3<T> const> const T_w_i(sT_w_i);
@@ -61,11 +62,12 @@ struct ReprojectionCostFunctor {
     const std::shared_ptr<AbstractCamera<T>> cam =
         AbstractCamera<T>::from_data(cam_model, sIntr);
 
-    // TODO SHEET 2: implement the rest of the functor
+    // See slide 37 of lecture 2 for the formula
+
+    residuals = p_2d - cam->project((T_w_i * T_i_c).inverse() * p_3d);
 
     return true;
   }
-
   Eigen::Vector2d p_2d;
   Eigen::Vector3d p_3d;
   std::string cam_model;
@@ -88,6 +90,10 @@ struct BundleAdjustmentReprojectionCostFunctor {
         AbstractCamera<T>::from_data(cam_model, sIntr);
 
     // TODO SHEET 4: Compute reprojection error
+    auto p_3d_c = T_w_c.inverse() * p_3d_w;
+    auto p_2d_projected = cam->project(p_3d_c);
+
+    residuals = p_2d - p_2d_projected;
 
     return true;
   }

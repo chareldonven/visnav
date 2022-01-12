@@ -53,6 +53,45 @@ using namespace cv;
 
 namespace visnav {
 
+void filter_optical_flow(std::vector<uchar> status,
+                         std::vector<Point2f> tracking_points[2],
+                         std::vector<Point2f> tracking_points_backward[2]) {
+  size_t i, k;
+  for (i = k = 0; i < tracking_points[1].size(); i++) {
+    if (!status[i]) continue;
+    k++;
+    tracking_points[1][k] = tracking_points[1][i];
+    tracking_points_backward[0][k] = tracking_points[1][i];
+  }
+  tracking_points[1].resize(k);
+  tracking_points_backward[0].resize(k);
+}
+
+void outlier_detection(std::vector<Point2f> tracking_points[2],
+                       cv::Mat image_previous, cv::Mat image_next) {
+  std::vector<uchar> status;
+  std::vector<float> err;
+  calcOpticalFlowPyrLK(image_previous, image_next, tracking_points[0],
+                       tracking_points[1], status, err);
+  std::vector<Point2f> tracking_points_backward[2];
+  tracking_points_backward[0].resize(tracking_points[1].size());
+
+  filter_optical_flow(status, tracking_points, tracking_points_backward);
+
+  status.clear();
+  err.clear();
+  calcOpticalFlowPyrLK(image_next, image_previous, tracking_points_backward[0],
+                       tracking_points_backward[1], status, err);
+
+  // /!\ remove tracking_points_backward as 3. parameter!
+
+  filter_optical_flow(status, tracking_points_backward,
+                      tracking_points_backward);
+
+  // Compare tracking_points to tracking_points_backward! Should we use a
+  // threshold? 3  pixels -> 1
+}
+
 void project_landmarks(
     const Sophus::SE3d& current_pose,
     const std::shared_ptr<AbstractCamera<double>>& cam,
@@ -64,7 +103,8 @@ void project_landmarks(
 void localize_camera(const Sophus::SE3d& current_pose,
                      const std::shared_ptr<AbstractCamera<double>>& cam,
                      const double ransac_thresh,
-                     std::vector<Point2f> tracking_points[2]) {
+                     std::vector<Point2f> tracking_points[2],
+                     Sophus::SE3d& T_i_j) {
   opengv::bearingVectors_t vectors_P;
   opengv::bearingVectors_t vectors_Q;
 
@@ -129,17 +169,25 @@ void localize_camera(const Sophus::SE3d& current_pose,
   const auto& refined_rotation = nonlinear_transformation.topLeftCorner(3, 3);
 
   // Store the final refined relative pose.
-  md.T_i_j = Sophus::SE3d(refined_rotation, refined_tranlation);
+  T_i_j = Sophus::SE3d(refined_rotation, refined_tranlation);
 }
 
 void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
                        const KeypointsData& kdl, const KeypointsData& kdr,
-                       const Calibration& calib_cam, const MatchData& md_stereo,
-                       const LandmarkMatchData& md, Landmarks& landmarks,
-                       TrackId& next_landmark_id) {}
+                       const Calibration& calib_cam, Landmarks& landmarks,
+                       TrackId& next_landmark_id) {
+  /*
+   *
+   * kdl saves the tracked keypoints in left stereo frame
+   * kdr saves the tracked keypoints in right stereo frame
+   *
+   * triangulate to compute the 3D positions and add new landmark.
+   *
+   * /!\ There are duplicates!
+   * */
+}
 
 void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
                           Cameras& cameras, Landmarks& landmarks,
-                          Landmarks& old_landmarks,
                           std::set<FrameId>& kf_frames) {}
 }  // namespace visnav

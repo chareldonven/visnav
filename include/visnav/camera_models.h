@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include <memory>
-
+#include <ceres/jet.h>
 #include <Eigen/Dense>
 #include <sophus/se3.hpp>
 
@@ -83,16 +83,8 @@ class PinholeCamera : public AbstractCamera<Scalar> {
     const Scalar& z = p[2];
 
     Vec2 res;
-
-    // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
+    res.x() = fx * x / z + cx;
+    res.y() = fy * y / z + cy;
     return res;
   }
 
@@ -104,14 +96,13 @@ class PinholeCamera : public AbstractCamera<Scalar> {
 
     Vec3 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-
-    return res;
+    auto mx = (p.x() - cx) / fx;
+    auto my = (p.y() - cy) / fy;
+    auto d = ceres::sqrt(mx * mx + my * my + Scalar(1));
+    res.x() = mx;
+    res.y() = my;
+    res.z() = Scalar(1);
+    return res / d;
   }
 
   const VecN& getParam() const { return param; }
@@ -167,16 +158,10 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
 
     Vec2 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(alpha);
-    UNUSED(beta);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
+    auto d = ceres::sqrt(beta * (x * x + y * y) + z * z);
+    auto denominator = alpha * d + (Scalar(1) - alpha) * z;
+    res.x() = fx * x / denominator + cx;
+    res.y() = fy * y / denominator + cy;
 
     return res;
   }
@@ -191,16 +176,21 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
 
     Vec3 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(alpha);
-    UNUSED(beta);
+    auto mx = (p.x() - cx) / fx;
+    auto my = (p.y() - cy) / fy;
+    auto r_squared = mx * mx + my * my;
+    auto mz_numerator = Scalar(1) - beta * alpha * alpha * r_squared;
+    auto mz_denominator =
+        alpha * ceres::sqrt(Scalar(1) - (Scalar(2) * alpha - Scalar(1)) * beta *
+                                            r_squared) +
+        (Scalar(1) - alpha);
+    auto mz = mz_numerator / mz_denominator;
 
-    return res;
+    auto d = ceres::sqrt(r_squared + mz * mz);
+    res.x() = mx;
+    res.y() = my;
+    res.z() = mz;
+    return res / d;
   }
 
   const VecN& getParam() const { return param; }
@@ -251,17 +241,14 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
     const Scalar& z = p[2];
 
     Vec2 res;
+    auto d1 = ceres::sqrt((x * x + y * y + z * z));
+    //
+    auto factor = xi * d1 + z;
+    auto d2 = ceres::sqrt(x * x + y * y + factor * factor);
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(xi);
-    UNUSED(alpha);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
+    auto denominator = alpha * d2 + (Scalar(1) - alpha) * factor;
+    res.x() = fx * x / denominator + cx;
+    res.y() = fy * y / denominator + cy;
 
     return res;
   }
@@ -276,14 +263,27 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
 
     Vec3 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(xi);
-    UNUSED(alpha);
+    auto mx = (p.x() - cx) / fx;
+    auto my = (p.y() - cy) / fy;
+    auto r_squared = mx * mx + my * my;
+    auto mz_numerator = Scalar(1) - alpha * alpha * r_squared;
+    auto mz_denominator =
+        alpha * ceres::sqrt(Scalar(1) -
+                            (Scalar(2) * alpha - Scalar(1)) * r_squared) +
+        (Scalar(1) - alpha);
+    auto mz = mz_numerator / mz_denominator;
+
+    auto d_numerator =
+        mz * xi + ceres::sqrt(mz * mz + (Scalar(1) - xi * xi) * r_squared);
+    auto d_denominator = mz * mz + r_squared;
+    auto d = d_numerator / d_denominator;
+
+    res.x() = mx;
+    res.y() = my;
+    res.z() = mz;
+    res *= d;
+
+    res.z() -= xi;
     return res;
   }
 
@@ -339,38 +339,143 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
     const Scalar& z = p[2];
 
     Vec2 res;
+    auto r = ceres::sqrt(x * x + y * y);
+    auto theta = ceres::atan2(r, z);
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(k1);
-    UNUSED(k2);
-    UNUSED(k3);
-    UNUSED(k4);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
+    // See description of calculate_polynom()
+    const std::array<Scalar, 6> polynom_coefficients{Scalar(0), Scalar(1), k1,
+                                                     k2,        k3,        k4};
+    auto last_index_of_coefficients = polynom_coefficients.size() - 1;
+    auto d = calculate_polynom(theta, Scalar(0), last_index_of_coefficients,
+                               polynom_coefficients[last_index_of_coefficients],
+                               polynom_coefficients);
+
+    if (r == Scalar(0)) {
+      // to avoid division by 0
+      res.x() = cx;
+      res.y() = cy;
+    } else {
+      res.x() = fx * d * x / r + cx;
+      res.y() = fy * d * y / r + cy;
+    }
 
     return res;
   }
+  /*
+   * This method calculates for the value of the polynom for KannalaBrandt4
+   * x is the point for which the polynom should be evaluated
+   * r is used for the unprojection method, when we search for x* = d^(-1)(r)
+   * iteration indicates the current recursion step
+   * current_term is needed for end recursion and contains the factor with which
+   x^2 should be multiplied in each step for Horner's method
+   *    0 + x(1 + x^2 (k1 + x^2(...)))
+   *    The first coefficient is only a place holder in order for coefficient[1]
+   to be 1
+   * coefficients are the coefficients of the KannalaBrandt4 polynom: 1 * x + k1
+   x^3 + ...
 
+
+  */
+  Scalar calculate_polynom(Scalar x, Scalar r, int iteration,
+                           Scalar current_term,
+                           const std::array<Scalar, 6>& coefficients) const {
+    auto x_squared = x * x;
+    // unless iteration step == 1 then evaluate k(i - 1) + x^2 k(i)
+    auto next_term = current_term;
+    if (iteration > 1) {
+      next_term = next_term * x_squared + coefficients[iteration - 1];
+    }
+    // if iteration step == 1 then evaluate x * current_term - r
+    if (iteration == 1) {
+      next_term = next_term * x - r;
+      return next_term;
+    }
+    return calculate_polynom(x, r, (iteration - 1), next_term, coefficients);
+  }
+  /*
+   * Similar to calculate_polynom
+   * Uses Horner's method to evaluate the derivative of the KannalaBrandt
+   polynom
+   Different from the calculate_polynom method, the first argument is x_squared
+   *
+
+*/
+  Scalar calculate_derivative(Scalar x_squared, int iteration,
+                              Scalar current_term,
+                              const std::array<Scalar, 5>& coefficients) const {
+    auto next_term = coefficients[iteration - 1] + x_squared * current_term;
+
+    // For the derivative the Horner's method looks like this: 1 + x^2(k1 +
+    // x^2(...))
+    if (iteration == 1) {
+      return next_term;
+    }
+    return calculate_derivative(x_squared, (iteration - 1), next_term,
+                                coefficients);
+  }
+
+  /*  This method uses Newtow's method to find the root of the KannalaBradt4
+     polynom - r, where r is x* = d^(-1)(r)
+     */
+  Scalar find_root(Scalar start_x, Scalar r, int iterations_number,
+                   const std::array<Scalar, 6>& polynom_coefficients,
+                   const std::array<Scalar, 5>& derivative_coefficients) const {
+    auto last_index_polynom_coefficients = polynom_coefficients.size() - 1;
+    auto last_index_derivative_coefficients =
+        derivative_coefficients.size() - 1;
+    auto next_x =
+        start_x -
+        calculate_polynom(start_x, r, last_index_polynom_coefficients,
+                          polynom_coefficients[last_index_polynom_coefficients],
+                          polynom_coefficients) /
+            calculate_derivative(
+                start_x * start_x, last_index_derivative_coefficients,
+                derivative_coefficients[last_index_derivative_coefficients],
+                derivative_coefficients);
+    if (iterations_number == 0) {
+      return next_x;
+    }
+    return find_root(next_x, r, iterations_number - 1, polynom_coefficients,
+                     derivative_coefficients);
+  }
   Vec3 unproject(const Vec2& p) const {
     const Scalar& fx = param[0];
     const Scalar& fy = param[1];
     const Scalar& cx = param[2];
     const Scalar& cy = param[3];
+    const Scalar& k1 = param[4];
+    const Scalar& k2 = param[5];
+    const Scalar& k3 = param[6];
+    const Scalar& k4 = param[7];
 
     Vec3 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
+    auto mx = (p.x() - cx) / fx;
+    auto my = (p.y() - cy) / fy;
+    auto r = ceres::sqrt(mx * mx + my * my);
+    if (r == Scalar(0)) {
+      res.x() = Scalar(0);
+      res.y() = Scalar(0);
+      res.z() = Scalar(1);
+    } else {
+      const Scalar x_0(1);
+      const std::array<Scalar, 6> polynom_coefficients{
+          Scalar(0), Scalar(1), k1, k2, k3, k4};
 
+      const std::array<Scalar, 5> derivative_coefficients{
+          Scalar(1), Scalar(3) * k1, Scalar(5) * k2, Scalar(7) * k3,
+          Scalar(9) * k4};
+
+      auto theta =
+          find_root(x_0, r, 6, polynom_coefficients, derivative_coefficients);
+
+      auto sin_theta = ceres::sin(theta);
+      auto cos_theta = ceres::cos(theta);
+
+      res.x() = sin_theta * mx / r;
+      res.y() = sin_theta * my / r;
+      res.z() = cos_theta;
+    }
     return res;
   }
 
