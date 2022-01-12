@@ -210,6 +210,24 @@ struct CameraCandidate {
   bool camera_added = false;     //!< succeeded to add to map
   bool landmarks_added = false;  //!< added new landmarks to map
 };
+// Right data type?
+using PatchID = unsigned int;
+struct OpticalFlowData {
+  TrackId trackID;
+  // Save position:  Should we use featureID or Vector2d
+  FeatureId featureID_current_frame;
+
+  PatchID patchID_current_frame;
+};
+using TrackedPoints = std::vector<OpticalFlowData>;
+using FeaturePatchPair = std::map<FeatureId, PatchID>;
+/// collection of 2d corner points (indexed by FeatureId)
+using KeypointsPositions =
+    std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>;
+struct StereoTrackedPoints {
+  KeypointsPositions left_image;
+  KeypointsPositions right_image;
+};
 
 /// list of current candidates and some book keeping for the different stages
 struct CameraCandidates {

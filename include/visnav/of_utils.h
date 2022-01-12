@@ -52,6 +52,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 using namespace cv;
 
 namespace visnav {
+// https://learnopencv.com/cropping-an-image-using-opencv/
+void divide_image_into_patches() {
+  /*
+   * Given an image, divide it into patches. Number patches? Parameter or always
+   * 4
+   *
+   * Call detect_keypoints from keypoint.h
+   * for each patch
+   * Define a pair: patch and keypoints in patch
+   * keypoints is determined from FeatureID  or smth like KeypointData
+   *
+   * Update OpticalFlowData
+   * */
+}
 
 void filter_optical_flow(std::vector<uchar> status,
                          std::vector<Point2f> tracking_points[2],
@@ -66,8 +80,12 @@ void filter_optical_flow(std::vector<uchar> status,
   tracking_points[1].resize(k);
   tracking_points_backward[0].resize(k);
 }
-
-void outlier_detection(std::vector<Point2f> tracking_points[2],
+/*
+ * Remove tracking_points
+ * Add opticalFlowData
+ *
+ * */
+void find_optical_flow(std::vector<Point2f> tracking_points[2],
                        cv::Mat image_previous, cv::Mat image_next) {
   std::vector<uchar> status;
   std::vector<float> err;
