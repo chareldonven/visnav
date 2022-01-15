@@ -37,11 +37,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/common_types.h>
 
 #include <visnav/calibration.h>
-#include <opengv/relative_pose/CentralRelativeAdapter.hpp>
-#include <opengv/relative_pose/methods.hpp>
-#include <opengv/sac/Ransac.hpp>
-#include <opengv/sac_problems/relative_pose/CentralRelativePoseSacProblem.hpp>
 
+#include <opengv/absolute_pose/CentralAbsoluteAdapter.hpp>
+#include <opengv/absolute_pose/methods.hpp>
+#include <opengv/relative_pose/CentralRelativeAdapter.hpp>
+#include <opengv/sac/Ransac.hpp>
+#include <opengv/sac_problems/absolute_pose/AbsolutePoseSacProblem.hpp>
+#include <opengv/triangulation/methods.hpp>
+
+#include <visnav/keypoints.h>
 #include <visnav/serialization.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
@@ -49,163 +53,290 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opencv2/videoio/videoio.hpp>
 #include <opencv2/video/video.hpp>
 #include <opencv2/video/tracking.hpp>
+
 using namespace cv;
 
 namespace visnav {
 // https://learnopencv.com/cropping-an-image-using-opencv/
-void divide_image_into_patches() {
-  /*
-   * Given an image, divide it into patches. Number patches? Parameter or always
-   * 4
-   *
-   * Call detect_keypoints from keypoint.h
-   * for each patch
-   * Define a pair: patch and keypoints in patch
-   * keypoints is determined from FeatureID  or smth like KeypointData
-   *
-   * Update OpticalFlowData
-   * */
-}
+void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
+                               KeypointsPositions& kd, int num_features,
+                               FeaturePatchPair& fpp) {
+  kd.clear();
+  fpp.clear();
+  cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
 
-void filter_optical_flow(std::vector<uchar> status,
-                         std::vector<Point2f> tracking_points[2],
-                         std::vector<Point2f> tracking_points_backward[2]) {
-  size_t i, k;
-  for (i = k = 0; i < tracking_points[1].size(); i++) {
-    if (!status[i]) continue;
-    k++;
-    tracking_points[1][k] = tracking_points[1][i];
-    tracking_points_backward[0][k] = tracking_points[1][i];
-  }
-  tracking_points[1].resize(k);
-  tracking_points_backward[0].resize(k);
+  const auto rowrange_0 = cv::Range(0, image.rows / 2);
+  const auto colrange_0 = cv::Range(0, image.cols / 2);
+
+  const auto rowrange_1 = cv::Range(image.rows / 2, image.rows);
+  const auto colrange_1 = cv::Range(image.cols / 2, image.cols);
+  cv::Mat subimage1(image, rowrange_0, colrange_0);
+  cv::Mat subimage2(image, rowrange_0, colrange_1);
+  cv::Mat subimage3(image, rowrange_1, colrange_0);
+  cv::Mat subimage4(image, rowrange_1, colrange_1);
+
+  detectKeypoints_in_patch(subimage1, img_raw, kd, num_features, fpp, 1);
+  detectKeypoints_in_patch(subimage2, img_raw, kd, num_features, fpp, 2);
+  detectKeypoints_in_patch(subimage3, img_raw, kd, num_features, fpp, 3);
+  detectKeypoints_in_patch(subimage4, img_raw, kd, num_features, fpp, 4);
 }
-/*
- * Remove tracking_points
- * Add opticalFlowData
- *
- * */
-void find_optical_flow(std::vector<Point2f> tracking_points[2],
-                       cv::Mat image_previous, cv::Mat image_next) {
+void find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
+                  KeypointsPositions& kd, FeaturePatchPair& fpp) {}
+bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
+                     const int threshold) {
+  return true;
+}
+void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
+                              KeypointsPositions& kdr,
+                              const pangolin::ManagedImage<uint8_t>& img_raw_0,
+                              const pangolin::ManagedImage<uint8_t>& img_raw_1,
+                              MatchData& stereo_trackedPoints) {
+  cv::Mat image_0(img_raw_0.h, img_raw_0.w, CV_8U, img_raw_0.ptr);
+  cv::Mat image_1(img_raw_1.h, img_raw_1.w, CV_8U, img_raw_1.ptr);
+
+  OpticalFlowPairs forward_tracking, backward_tracking;
+  for (const auto& position : kdl) {
+    // forward_tracking.source_points.emplace_back(position);
+  }
   std::vector<uchar> status;
   std::vector<float> err;
-  calcOpticalFlowPyrLK(image_previous, image_next, tracking_points[0],
-                       tracking_points[1], status, err);
-  std::vector<Point2f> tracking_points_backward[2];
-  tracking_points_backward[0].resize(tracking_points[1].size());
+  calcOpticalFlowPyrLK(image_0, image_1, forward_tracking.source_points,
+                       forward_tracking.target_points, status, err);
 
-  filter_optical_flow(status, tracking_points, tracking_points_backward);
+  for (int i = 0; i < forward_tracking.target_points.size(); i++) {
+    FeatureId featureID = i;
+    if (!status[i]) {
+      forward_tracking.outliers.emplace_back(featureID);
+    } else {
+      forward_tracking.inliers.emplace_back(featureID);
+      backward_tracking.source_points.emplace_back(
+          forward_tracking.target_points[i]);
+    }
+  }
 
   status.clear();
   err.clear();
-  calcOpticalFlowPyrLK(image_next, image_previous, tracking_points_backward[0],
-                       tracking_points_backward[1], status, err);
+  calcOpticalFlowPyrLK(image_1, image_0, backward_tracking.source_points,
+                       backward_tracking.target_points, status, err);
 
-  // /!\ remove tracking_points_backward as 3. parameter!
-
-  filter_optical_flow(status, tracking_points_backward,
-                      tracking_points_backward);
+  size_t last_index = 0;
+  for (int k = 0; k < backward_tracking.target_points.size(); k++) {
+    FeatureId featureID = forward_tracking.inliers[k];
+    if (!status[k]) {
+      backward_tracking.outliers.emplace_back(featureID);
+    } else {
+      backward_tracking.inliers.emplace_back(featureID);
+      backward_tracking.target_points[last_index] =
+          backward_tracking.target_points[k];
+      last_index++;
+    }
+  }
+  backward_tracking.target_points.resize(last_index);
 
   // Compare tracking_points to tracking_points_backward! Should we use a
   // threshold? 3  pixels -> 1
-}
 
+  for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
+    for (size_t j = 0; j < forward_tracking.inliers.size(); j++) {
+      if (backward_tracking.inliers[i] == forward_tracking.inliers[j]) {
+        const FeatureId& featureID = forward_tracking.inliers[j];
+        if (check_threshold(backward_tracking.target_points[i],
+                            forward_tracking.source_points[featureID], 3)) {
+          /*
+        stereo_trackedPoints.left_image.emplace_back(
+            forward_tracking.source_points[featureID]);
+        stereo_trackedPoints.right_image.emplace_back(
+            forward_tracking.target_points[featureID]);
+            */
+        }
+      }
+    }
+  }
+}
+/// Stereo:
+void add_new_landmarks(Landmarks& landmarks, MatchData& stereo_trackedPoints,
+                       const Corners& feature_corners, FeaturePatchPair& fpp,
+                       TrackedPoints& trackedPoints) {
+  // Also update trackedpoints
+}
+/// Frame to frame: füge neue obs hinzu
+void update_landmarks(const std::vector<TrackId>& projected_track_ids,
+                      Landmarks& landmarks, TrackedPoints& trackedPoints,
+                      const FrameCamId fcidl) {}
 void project_landmarks(
     const Sophus::SE3d& current_pose,
     const std::shared_ptr<AbstractCamera<double>>& cam,
     const Landmarks& landmarks, const double cam_z_threshold,
     std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>&
         projected_points,
-    std::vector<TrackId>& projected_track_ids) {}
+    std::vector<TrackId>& projected_track_ids) {
+  projected_points.clear();
+  projected_track_ids.clear();
+
+  // TODO SHEET 5: project landmarks to the image plane using the current
+  // locations of the cameras. Put 2d coordinates of the projected points into
+  // projected_points and the corresponding id of the landmark into
+  // projected_track_ids.
+
+  // First transform landmarks to camera coordinates
+  for (const auto& landmark : landmarks) {
+    // Get 3D coordinates in camera reference
+    auto landmark_3D_world = landmark.second.p;
+    auto landmark_3D_camera = current_pose.inverse() * landmark_3D_world;
+
+    // Check all the given constraints
+    auto z_coordinate = landmark_3D_camera.z();
+    // Check if the point is behing the camera
+    if (z_coordinate >= cam_z_threshold) {
+      auto projected_landmark = cam->project(landmark_3D_camera);
+
+      // Get width and height of the image
+      const auto& image_width = cam->width();
+      const auto& image_height = cam->height();
+      // Check whether the projected point is outside the image
+      if (0 <= projected_landmark.x() &&
+          projected_landmark.x() <= image_width &&
+          0 <= projected_landmark.y() &&
+          projected_landmark.y() <= image_height) {
+        // Save the 2D location and TrackID of the landmark the point originates
+        // from
+        const auto& track_id = landmark.first;
+
+        projected_points.emplace_back(projected_landmark);
+        projected_track_ids.emplace_back(track_id);
+      }
+    }
+  }
+}
 
 void localize_camera(const Sophus::SE3d& current_pose,
                      const std::shared_ptr<AbstractCamera<double>>& cam,
-                     const double ransac_thresh,
-                     std::vector<Point2f> tracking_points[2],
-                     Sophus::SE3d& T_i_j) {
-  opengv::bearingVectors_t vectors_P;
-  opengv::bearingVectors_t vectors_Q;
+                     const KeypointsData& kdl, const Landmarks& landmarks,
+                     const double reprojection_error_pnp_inlier_threshold_pixel,
+                     LandmarkMatchData& md) {
+  md.inliers.clear();
 
-  for (size_t i = 0; i < tracking_points[0].size(); i++) {
-    // Get the respective 2D  points
-    auto p_2d_x = tracking_points[0][i].x;
-    auto p_2d_y = tracking_points[0][i].y;
+  // default to previous pose if not enough inliers
+  md.T_w_c = current_pose;
 
-    auto q_2d_x = tracking_points[1][i].x;
-    auto q_2d_y = tracking_points[1][i].y;
-
-    Eigen::Vector2d p_2d(p_2d_x, p_2d_y);
-    Eigen::Vector2d q_2d(q_2d_x, q_2d_y);
-
-    // Find the respective 3D point to the corner point
-    auto p_3d_P = cam->unproject(p_2d);
-    auto p_3d_Q = cam->unproject(q_2d);
-
-    vectors_P.emplace_back(p_3d_P);
-    vectors_Q.emplace_back(p_3d_Q);
+  if (md.matches.size() < 4) {
+    return;
   }
 
-  // Define the central relative adapter
-  opengv::relative_pose::CentralRelativeAdapter adapter(vectors_P, vectors_Q);
-  // Create a Ransac object
+  // TODO SHEET 5: Find the pose (md.T_w_c) and the inliers (md.inliers) using
+  // the landmark to keypoints matches and PnP. This should be similar to the
+  // localize_camera in exercise 4 but in this exercise we don't explicitly have
+  // tracks.
+
+  opengv::bearingVectors_t bearing_vectors;
+  opengv::points_t points;
+
+  for (const auto& match : md.matches) {
+    auto landmark = landmarks.at(match.second);
+    auto point3d = landmark.p;
+    points.push_back(point3d);
+
+    auto corner_point2d = kdl.corners[match.first];
+    auto corner_point3d = cam->unproject(corner_point2d);
+    bearing_vectors.push_back(corner_point3d.normalized());
+  }
+
+  opengv::absolute_pose::CentralAbsoluteAdapter adapter(bearing_vectors,
+                                                        points);
+
   opengv::sac::Ransac<
-      opengv::sac_problems::relative_pose::CentralRelativePoseSacProblem>
+      opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem>
       ransac;
-  // Create a CentralRelativePoseSacProblem with STEWENIUS 5 point algorithm
-  std::shared_ptr<
-      opengv::sac_problems::relative_pose::CentralRelativePoseSacProblem>
-      relposeproblem_ptr(
-          new opengv::sac_problems::relative_pose::
-              CentralRelativePoseSacProblem(
-                  adapter, opengv::sac_problems::relative_pose::
-                               CentralRelativePoseSacProblem::STEWENIUS));
-  // Run Ransac
-  ransac.sac_model_ = relposeproblem_ptr;
-  ransac.threshold_ = ransac_thresh;
-  // What is a good number of iterations?
-  ransac.max_iterations_ = 10;
+  std::shared_ptr<opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem>
+      absposeproblem_ptr(
+          new opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem(
+              adapter, opengv::sac_problems::absolute_pose::
+                           AbsolutePoseSacProblem::KNEIP));
+
+  ransac.sac_model_ = absposeproblem_ptr;
+  ransac.threshold_ =
+      1.0 - cos(atan(reprojection_error_pnp_inlier_threshold_pixel / 500.0));
+  ransac.max_iterations_ = 100;
+
   ransac.computeModel();
-  // Get the results:
   const auto& translation = ransac.model_coefficients_.topRightCorner(3, 1);
   const auto& rotation = ransac.model_coefficients_.topLeftCorner(3, 3);
+  adapter.setR(rotation);
+  adapter.sett(translation);
 
-  adapter.sett12(translation);
-  adapter.setR12(rotation);
-  // Nonlinear optimization to refine the model parameters using ALL inliers
   const opengv::transformation_t nonlinear_transformation =
-      opengv::relative_pose::optimize_nonlinear(adapter, ransac.inliers_);
-  // Update the set of inliers using the refined relative pose
-  // Select the inliers that are within threshold from the model
-  // sac_model_->selectWithinDistance( model_coefficients, threshold_, inliers
-  // );
+      opengv::absolute_pose::optimize_nonlinear(adapter, ransac.inliers_);
   ransac.sac_model_->selectWithinDistance(nonlinear_transformation,
-                                          ransac_thresh, ransac.inliers_);
-  // Get refined pose
-  // Normalize translation vector
+                                          ransac.threshold_, ransac.inliers_);
+
   const auto& refined_tranlation =
-      nonlinear_transformation.topRightCorner(3, 1).normalized();
+      nonlinear_transformation.topRightCorner(3, 1);
   const auto& refined_rotation = nonlinear_transformation.topLeftCorner(3, 3);
 
-  // Store the final refined relative pose.
-  T_i_j = Sophus::SE3d(refined_rotation, refined_tranlation);
-}
-
-void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
-                       const KeypointsData& kdl, const KeypointsData& kdr,
-                       const Calibration& calib_cam, Landmarks& landmarks,
-                       TrackId& next_landmark_id) {
-  /*
-   *
-   * kdl saves the tracked keypoints in left stereo frame
-   * kdr saves the tracked keypoints in right stereo frame
-   *
-   * triangulate to compute the 3D positions and add new landmark.
-   *
-   * /!\ There are duplicates!
-   * */
+  md.T_w_c = Sophus::SE3d(refined_rotation, refined_tranlation);
+  for (size_t i = 0; i < ransac.inliers_.size(); ++i) {
+    md.inliers.push_back(md.matches[ransac.inliers_[i]]);
+  }
 }
 
 void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
                           Cameras& cameras, Landmarks& landmarks,
-                          std::set<FrameId>& kf_frames) {}
+                          Landmarks& old_landmarks,
+                          std::set<FrameId>& kf_frames) {
+  kf_frames.emplace(fcidl.frame_id);
+
+  // TODO SHEET 5: Remove old cameras and observations if the number of
+  // keyframe pairs (left and right image is a pair) is larger than
+  // max_num_kfs. The ids of all the keyframes that are currently in the
+  // optimization should be stored in kf_frames. Removed keyframes should be
+  // removed from cameras and landmarks with no left observations should be
+  // moved to old_landmarks.
+
+  // Is this the right condition? This the condition the test checks!
+  while (max_num_kfs < int(kf_frames.size())) {
+    // Assume the first is the oldest just like in the odometry.cpp
+    const auto& frameID = *kf_frames.begin();
+    // Remove old keyframes from cameras
+    for (const auto& camera : cameras) {
+      if (camera.first.frame_id == frameID) {
+        cameras.erase(cameras.find(camera.first));
+      }
+    }
+    // Remove old keyframes from current keyframes
+    kf_frames.erase(kf_frames.begin());
+  }
+
+  Landmarks new_landmarks;
+  for (auto& landmark : landmarks) {
+    auto& observations = landmark.second.obs;
+    FeatureTrack new_observations;
+    // save the correct observations in new_observations
+    for (auto& observation : observations) {
+      for (const auto& frameID : kf_frames) {
+        if (observation.first.frame_id == frameID) {
+          new_observations.emplace(observation);
+        }
+      }
+    }
+    // First clear and then save new_observations to observations
+    observations.clear();
+
+    for (auto& observation : new_observations) {
+      observations.emplace(observation);
+    }
+
+    // Move landmarks with no observations to old_landmarks
+    // Save temporarly landmarks with observations in new_landmarks
+    if (!landmark.second.obs.empty()) {
+      new_landmarks.emplace(landmark);
+    } else {
+      old_landmarks.emplace(landmark);
+    }
+  }
+  // First clear and then save new_landmarks to landmarks
+  landmarks.clear();
+  for (auto& landmark : new_landmarks) {
+    landmarks.emplace(landmark);
+  }
+}
 }  // namespace visnav

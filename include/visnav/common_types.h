@@ -46,7 +46,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sophus/se3.hpp>
 
 #include <visnav/hash.h>
-
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/videoio/videoio.hpp>
+#include <opencv2/video/video.hpp>
+#include <opencv2/video/tracking.hpp>
+using namespace cv;
 #define UNUSED(x) (void)(x)
 
 namespace visnav {
@@ -227,6 +233,12 @@ using KeypointsPositions =
 struct StereoTrackedPoints {
   KeypointsPositions left_image;
   KeypointsPositions right_image;
+};
+struct OpticalFlowPairs {
+  std::vector<cv::Point2f> source_points;
+  std::vector<cv::Point2f> target_points;
+  std::vector<FeatureId> outliers;
+  std::vector<FeatureId> inliers;
 };
 
 /// list of current candidates and some book keeping for the different stages

@@ -42,7 +42,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <pangolin/image/managed_image.h>
 
 #include <opencv2/imgproc/imgproc.hpp>
-
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/videoio/videoio.hpp>
+#include <opencv2/video/video.hpp>
+#include <opencv2/video/tracking.hpp>
 #include <visnav/common_types.h>
 namespace keypoints_intern {
 // Rotates a 2d vector by angle
@@ -201,11 +205,34 @@ char pattern_31_y_b[256] = {
     -13, 12,  4,   6,   12,  1,   1,   1,   -13, -13, 4,   -2,  -3,  -2, 10,
     -9,  -1,  -2,  -8,  5,   10,  5,   5,   11,  -6,  -12, 9,   4,   -2, -2,
     -11};
+/**
+ * @brief detectKeypoints_in_patch
+ * @param img_raw
+ * @param kd
+ * @param num_features
+ */
+// Change from pangolin to cv?
+
+void detectKeypoints_in_patch(const cv::Mat& patch,
+                              const pangolin::ManagedImage<uint8_t>& img_raw,
+                              KeypointsPositions& kd, int num_features,
+                              FeaturePatchPair& fpp, PatchID patchID) {
+  cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
+  std::vector<cv::Point2f> points;
+  goodFeaturesToTrack(patch, points, num_features, 0.01, 8);
+
+  const auto& last_index = kd.size();
+  for (size_t i = 0; i < points.size(); i++) {
+    if (img_raw.InBounds(points[i].x, points[i].y, EDGE_THRESHOLD)) {
+      kd.emplace_back(points[i].x, points[i].y);
+      fpp.emplace(last_index + i, patchID);
+    }
+  }
+}
 
 void detectKeypoints(const pangolin::ManagedImage<uint8_t>& img_raw,
                      KeypointsData& kd, int num_features) {
   cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
-
   std::vector<cv::Point2f> points;
   goodFeaturesToTrack(image, points, num_features, 0.01, 8);
 

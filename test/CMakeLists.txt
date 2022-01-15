@@ -31,11 +31,15 @@ add_executable(test_ex5 src/test_ex5.cpp)
 target_link_libraries(test_ex5 gtest gtest_main Ceres::ceres opengv TBB::tbb)
 
 
+add_executable(test_of src/test_of.cpp)
+target_link_libraries(test_of gtest gtest_main Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
-#gtest_discover_tests(test_ex0 DISCOVERY_TIMEOUT 120)
-#gtest_discover_tests(test_ex1 DISCOVERY_TIMEOUT 120)
-#gtest_discover_tests(test_ex2 DISCOVERY_TIMEOUT 120)
-#add_test(NAME ex2_calibration_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test_ex2.sh WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-#gtest_discover_tests(test_ex3 DISCOVERY_TIMEOUT 120)
-#gtest_discover_tests(test_ex4 DISCOVERY_TIMEOUT 120)
-#gtest_discover_tests(test_ex5 DISCOVERY_TIMEOUT 120)
+
+gtest_discover_tests(test_ex0 DISCOVERY_TIMEOUT 120)
+gtest_discover_tests(test_ex1 DISCOVERY_TIMEOUT 120)
+gtest_discover_tests(test_ex2 DISCOVERY_TIMEOUT 120)
+add_test(NAME ex2_calibration_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test_ex2.sh WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+gtest_discover_tests(test_ex3 DISCOVERY_TIMEOUT 120)
+gtest_discover_tests(test_ex4 DISCOVERY_TIMEOUT 120)
+gtest_discover_tests(test_ex5 DISCOVERY_TIMEOUT 120)
+gtest_discover_tests(test_of DISCOVERY_TIMEOUT 120)
