@@ -81,7 +81,7 @@ void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
   detectKeypoints_in_patch(subimage4, img_raw, kd, num_features, fpp, 4);
 }
 PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
-                     std::vector<cv::Point2f> point) {
+                     cv::Point2f point) {
   PatchID result = 0;
   if (point.x > img_raw.w / 2) {
     result = result + 1;
@@ -175,6 +175,23 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
     }
   }
 }
+
+bool check_number_points_per_patch(FeaturePatchPair& fpp,
+                                   int min_points_per_patch) {
+  int patch_counter[4];
+  for (const auto elem : fpp) {
+    patch_counter[elem.second - 1] += 1;
+  }
+
+  bool res = false;
+
+  for (int i = 0; i < 4; i++) {
+    res = res || patch_counter[0] < min_points_per_patch;
+  }
+
+  return res;
+}
+
 /// Stereo:
 void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
                        const KeypointsData& kdl, const KeypointsData& kdr,
