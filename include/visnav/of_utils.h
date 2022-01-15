@@ -80,12 +80,24 @@ void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
   detectKeypoints_in_patch(subimage3, img_raw, kd, num_features, fpp, 3);
   detectKeypoints_in_patch(subimage4, img_raw, kd, num_features, fpp, 4);
 }
-void find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
-                  KeypointsPositions& kd, FeaturePatchPair& fpp) {}
+PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
+                     std::vector<cv::Point2f> point) {
+  PatchID result = 0;
+  if (point.x > img_raw.w / 2) {
+    result = result + 1;
+  }
+  if (point.y > img_raw.h / 2) {
+    result = result + 2;
+  }
+  return result;
+}
+
 bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
                      const int threshold) {
-  return true;
+  double norm = cv::norm(cv::Mat(position0), cv::Mat(position1));
+  return norm < threshold;
 }
+
 void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
                               KeypointsPositions& kdr,
                               const pangolin::ManagedImage<uint8_t>& img_raw_0,
@@ -95,8 +107,12 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
   cv::Mat image_1(img_raw_1.h, img_raw_1.w, CV_8U, img_raw_1.ptr);
 
   OpticalFlowPairs forward_tracking, backward_tracking;
+  // alle kp von allen position speichern in kdl
   for (const auto& position : kdl) {
-    // forward_tracking.source_points.emplace_back(position);
+    cv::Point2f points;
+    points.x = position[0];
+    points.y = position[1];
+    forward_tracking.source_points.emplace_back(points);
   }
   std::vector<uchar> status;
   std::vector<float> err;
@@ -142,12 +158,18 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
         const FeatureId& featureID = forward_tracking.inliers[j];
         if (check_threshold(backward_tracking.target_points[i],
                             forward_tracking.source_points[featureID], 3)) {
-          /*
-        stereo_trackedPoints.left_image.emplace_back(
-            forward_tracking.source_points[featureID]);
-        stereo_trackedPoints.right_image.emplace_back(
-            forward_tracking.target_points[featureID]);
-            */
+          kdl.emplace_back(forward_tracking.source_points[featureID]);
+          kdr.emplace_back(backward_tracking.source_points[featureID]);
+
+          stereo_trackedPoints.inliers.emplace_back(
+              std::make_pair(featureID, featureID));
+          stereo_trackedPoints.matches.emplace_back(
+              std::make_pair(featureID, featureID));
+
+          PatchID pID = find_patchID(
+              img_raw_1, backward_tracking.source_points[featureID]);
+
+          fpp[featureID] = pID;
         }
       }
     }
