@@ -154,15 +154,78 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
   }
 }
 /// Stereo:
-void add_new_landmarks(Landmarks& landmarks, MatchData& stereo_trackedPoints,
+void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
+                       const KeypointsData& kdl, const KeypointsData& kdr,
+                       Landmarks& landmarks, MatchData& stereo_trackedPoints,
                        const Corners& feature_corners, FeaturePatchPair& fpp,
-                       TrackedPoints& trackedPoints) {
+                       TrackedPoints& trackedPoints,
+                       const Calibration& calib_cam, LandmarkMatchData& md,
+                       TrackId& next_landmark_id) {
   // Also update trackedpoints
+
+  assert(fcidl.cam_id == 0);
+  assert(fcidr.cam_id == 1);
+
+  const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
+  const Eigen::Vector3d t_0_1 = T_0_1.translation();
+  const Eigen::Matrix3d R_0_1 = T_0_1.rotationMatrix();
+
+  opengv::bearingVectors_t vectors_0;
+  opengv::bearingVectors_t vectors_1;
+  // Prepare bearing vectors for the adapter
+  for (size_t i = 0; i < stereo_trackedPoints.inliers.size(); i++) {
+    const auto& stereo_l_featureID = stereo_trackedPoints.inliers[i].first;
+    const auto& stereo_r_featureID = stereo_trackedPoints.inliers[i].second;
+
+    const auto& point2D_0 = kdl.corners.at(stereo_l_featureID);
+    const auto& point2D_1 = kdr.corners.at(stereo_r_featureID);
+
+    auto point3D_0 =
+        calib_cam.intrinsics.at(fcidl.cam_id)->unproject(point2D_0);
+    auto point3D_1 =
+        calib_cam.intrinsics.at(fcidr.cam_id)->unproject(point2D_1);
+
+    vectors_0.emplace_back(point3D_0.normalized());
+    vectors_1.emplace_back(point3D_1.normalized());
+  }
+
+  opengv::relative_pose::CentralRelativeAdapter adapter(vectors_0, vectors_1);
+
+  adapter.setR12(R_0_1);
+  adapter.sett12(t_0_1);
+  // Triangulate new landmarks from stereo matches
+  for (size_t i = 0; i < stereo_trackedPoints.inliers.size(); i++) {
+    const auto& triangulated_point =
+        opengv::triangulation::triangulate(adapter, i);
+    next_landmark_id = next_landmark_id + 1;
+    const auto& new_trackID = next_landmark_id;
+    landmarks[new_trackID].p = md.T_w_c * triangulated_point;
+    landmarks.at(new_trackID)
+        .obs.emplace(fcidl, stereo_trackedPoints.inliers[i].first);
+    landmarks.at(new_trackID)
+        .obs.emplace(fcidr, stereo_trackedPoints.inliers[i].second);
+    // feature id of the left image
+    md.inliers.emplace_back(new_trackID, stereo_trackedPoints.inliers[i].first);
+    OpticalFlowData new_point;
+    new_point.trackID = new_trackID;
+    new_point.featureID_current_frame = stereo_trackedPoints.inliers[i].first;
+    // Find new patch
+    trackedPoints.emplace_back(new_point);
+  }
+  // Add matchdata in md
+  // Update tracked points
 }
 /// Frame to frame: füge neue obs hinzu
-void update_landmarks(const std::vector<TrackId>& projected_track_ids,
-                      Landmarks& landmarks, TrackedPoints& trackedPoints,
-                      const FrameCamId fcidl) {}
+void update_landmarks(Landmarks& landmarks, TrackedPoints& trackedPoints,
+                      const FrameCamId fcidl) {
+  for (const auto& trackedPoint : trackedPoints) {
+    const auto& trackID = trackedPoint.trackID;
+    // Find corresponding landmark
+    auto landmark = landmarks.at(trackID);
+
+    landmark.obs.emplace(fcidl, trackedPoint.featureID_current_frame);
+  }
+}
 void project_landmarks(
     const Sophus::SE3d& current_pose,
     const std::shared_ptr<AbstractCamera<double>>& cam,
