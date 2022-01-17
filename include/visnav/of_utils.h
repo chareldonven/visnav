@@ -149,7 +149,7 @@ void find_opticalflow_stereo_matches(
   calcOpticalFlowPyrLK(image_0, image_1, forward_tracking.source_points,
                        forward_tracking.target_points, status, err);
 
-  for (int i = 0; i < forward_tracking.target_points.size(); i++) {
+  for (size_t i = 0; i < forward_tracking.target_points.size(); i++) {
     FeatureId featureID = i;
     if (!status[i]) {
       forward_tracking.outliers.emplace_back(featureID);
@@ -166,7 +166,7 @@ void find_opticalflow_stereo_matches(
                        backward_tracking.target_points, status, err);
 
   size_t last_index = 0;
-  for (int k = 0; k < backward_tracking.target_points.size(); k++) {
+  for (size_t k = 0; k < backward_tracking.target_points.size(); k++) {
     FeatureId featureID = forward_tracking.inliers[k];
     if (!status[k]) {
       backward_tracking.outliers.emplace_back(featureID);
@@ -202,11 +202,6 @@ void find_opticalflow_stereo_matches(
               std::make_pair(featureID, featureID));
           stereo_trackedPoints.matches.emplace_back(
               std::make_pair(featureID, featureID));
-
-          PatchID pID = find_patchID(
-              img_raw_1, backward_tracking.source_points[featureID]);
-
-          fpp[featureID] = pID;
         }
       }
     }
