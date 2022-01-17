@@ -193,23 +193,24 @@ void find_opticalflow_stereo_matches(
   for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
     for (size_t j = 0; j < forward_tracking.inliers.size(); j++) {
       if (backward_tracking.inliers[i] == forward_tracking.inliers[j]) {
-        const FeatureId& featureID = forward_tracking.inliers[j];
+        const FeatureId& featureIDL = forward_tracking.inliers[j];
+        const FeatureId& featureIDR = backward_tracking.inliers[i];
         if (check_threshold(backward_tracking.target_points[i],
-                            forward_tracking.source_points[featureID], 3)) {
+                            forward_tracking.source_points[featureIDL], 3)) {
           Eigen::Vector2d forward_point;
-          forward_point[0] = forward_tracking.source_points[featureID].x;
-          forward_point[1] = forward_tracking.source_points[featureID].y;
+          forward_point[0] = forward_tracking.source_points[featureIDL].x;
+          forward_point[1] = forward_tracking.source_points[featureIDL].y;
           kdl.emplace_back(forward_point);
 
           Eigen::Vector2d backward_point;
-          backward_point[0] = backward_tracking.source_points[featureID].x;
-          backward_point[1] = backward_tracking.source_points[featureID].y;
+          backward_point[0] = backward_tracking.source_points[featureIDR].x;
+          backward_point[1] = backward_tracking.source_points[featureIDR].y;
           kdr.emplace_back(backward_point);
 
           stereo_trackedPoints.inliers.emplace_back(
-              std::make_pair(featureID, featureID));
+              std::make_pair(featureIDL, featureIDR));
           stereo_trackedPoints.matches.emplace_back(
-              std::make_pair(featureID, featureID));
+              std::make_pair(featureIDL, featureIDR));
         }
       }
     }
@@ -229,7 +230,98 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
                               KeypointsPositions& kdr,
                               const pangolin::ManagedImage<uint8_t>& img_raw_0,
                               const pangolin::ManagedImage<uint8_t>& img_raw_1,
-                              TrackedPoints& trackedPoints) {}
+                              TrackedPoints& trackedPoints) {
+  cv::Mat image_0(img_raw_0.h, img_raw_0.w, CV_8U, img_raw_0.ptr);
+  cv::Mat image_1(img_raw_1.h, img_raw_1.w, CV_8U, img_raw_1.ptr);
+
+  OpticalFlowPairs forward_tracking, backward_tracking;
+  // alle kp von allen position speichern in kdl
+  for (const auto& position : kdl) {
+    cv::Point2f points;
+    points.x = position[0];
+    points.y = position[1];
+    forward_tracking.source_points.emplace_back(points);
+  }
+  std::vector<uchar> status;
+  std::vector<float> err;
+  calcOpticalFlowPyrLK(image_0, image_1, forward_tracking.source_points,
+                       forward_tracking.target_points, status, err);
+
+  for (size_t i = 0; i < forward_tracking.target_points.size(); i++) {
+    FeatureId featureID = i;
+    if (!status[i]) {
+      forward_tracking.outliers.emplace_back(featureID);
+    } else {
+      forward_tracking.inliers.emplace_back(featureID);
+      backward_tracking.source_points.emplace_back(
+          forward_tracking.target_points[i]);
+    }
+  }
+
+  status.clear();
+  err.clear();
+  calcOpticalFlowPyrLK(image_1, image_0, backward_tracking.source_points,
+                       backward_tracking.target_points, status, err);
+
+  size_t last_index = 0;
+  for (size_t k = 0; k < backward_tracking.target_points.size(); k++) {
+    FeatureId featureID = forward_tracking.inliers[k];
+    if (!status[k]) {
+      backward_tracking.outliers.emplace_back(featureID);
+    } else {
+      backward_tracking.inliers.emplace_back(featureID);
+      backward_tracking.target_points[last_index] =
+          backward_tracking.target_points[k];
+      last_index++;
+    }
+  }
+  backward_tracking.target_points.resize(last_index);
+
+  // Compare tracking_points to tracking_points_backward! Should we use a
+  // threshold? 3  pixels -> 1
+
+  TrackedPoints new_tracked_Points;
+  for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
+    for (size_t j = 0; j < forward_tracking.inliers.size(); j++) {
+      if (backward_tracking.inliers[i] == forward_tracking.inliers[j]) {
+        const FeatureId& featureID = forward_tracking.inliers[j];
+        const FeatureId& featureID_next = backward_tracking.inliers[i];
+        if (check_threshold(backward_tracking.target_points[i],
+                            forward_tracking.source_points[featureID], 3)) {
+          Eigen::Vector2d forward_point;
+          forward_point[0] = forward_tracking.source_points[featureID].x;
+          forward_point[1] = forward_tracking.source_points[featureID].y;
+          kdl.emplace_back(forward_point);
+
+          Eigen::Vector2d backward_point;
+          backward_point[0] = backward_tracking.source_points[featureID_next].x;
+          backward_point[1] = backward_tracking.source_points[featureID_next].y;
+          kdr.emplace_back(backward_point);
+
+          PatchID pID = find_patchID(
+              img_raw_1, backward_tracking.source_points[featureID]);
+
+          fpp[featureID] = pID;
+
+          OpticalFlowData ofd;
+
+          for (size_t k = 0; k < trackedPoints.size(); k++) {
+            if (trackedPoints[k].featureID_current_frame == featureID) {
+              ofd.trackID = trackedPoints[k].trackID;
+              break;
+            }
+          }
+          ofd.patchID_current_frame = pID;
+          ofd.featureID_current_frame = featureID_next;
+
+          new_tracked_Points.push_back(ofd);
+        }
+      }
+    }
+  }
+  trackedPoints.clear();
+  trackedPoints = new_tracked_Points;
+}
 
 /// This Method checks if all patch contains enough points
 bool enough_points_in_patch(const FeaturePatchPair& fpp,
