@@ -117,11 +117,11 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
 /// It saves the 2d positions of the right/next frame in kdr
 /// It does not change kdl
 /// It saves the ids of matches in stereo_trackedPoints
-void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
-                              KeypointsPositions& kdr,
-                              const pangolin::ManagedImage<uint8_t>& img_raw_0,
-                              const pangolin::ManagedImage<uint8_t>& img_raw_1,
-                              MatchData& stereo_trackedPoints) {
+void find_opticalflow_stereo_matches(
+    FeaturePatchPair& fpp, KeypointsPositions& kdl, KeypointsPositions& kdr,
+    const pangolin::ManagedImage<uint8_t>& img_raw_0,
+    const pangolin::ManagedImage<uint8_t>& img_raw_1,
+    MatchData& stereo_trackedPoints) {
   cv::Mat image_0(img_raw_0.h, img_raw_0.w, CV_8U, img_raw_0.ptr);
   cv::Mat image_1(img_raw_1.h, img_raw_1.w, CV_8U, img_raw_1.ptr);
 
@@ -203,6 +203,19 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
     }
   }
 }
+
+/// This method computes frame to frame optical flow
+/// It save the new positions in the next frame of the tracked points in kdr
+/// It also finds the new patchID of the tracked points
+/// And the FeatureID in the next frame
+/// It saves the new feature-patch pairs in fpp
+///
+
+void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
+                              KeypointsPositions& kdr,
+                              const pangolin::ManagedImage<uint8_t>& img_raw_0,
+                              const pangolin::ManagedImage<uint8_t>& img_raw_1,
+                              TrackedPoints& trackedPoints) {}
 
 bool enough_points_in_patch(const FeaturePatchPair& fpp,
                             int min_points_per_patch) {
@@ -289,9 +302,9 @@ void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
   // Add matchdata in md
   // Update tracked points
 }
-/// Frame to frame: füge neue obs hinzu
+/// Frame to frame: add new observations to landmarks and fill md.matches
 void update_landmarks(Landmarks& landmarks, TrackedPoints& trackedPoints,
-                      const FrameCamId fcidl) {
+                      const FrameCamId fcidl, LandmarkMatchData& md) {
   for (const auto& trackedPoint : trackedPoints) {
     const auto& trackID = trackedPoint.trackID;
     // Find corresponding landmark
