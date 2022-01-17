@@ -177,8 +177,17 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
         const FeatureId& featureID = forward_tracking.inliers[j];
         if (check_threshold(backward_tracking.target_points[i],
                             forward_tracking.source_points[featureID], 3)) {
-          kdl.emplace_back(forward_tracking.source_points[featureID]);
-          kdr.emplace_back(backward_tracking.source_points[featureID]);
+          // sourcePoints: cv::Point2f
+          // Eigen::Vector2d
+          Eigen::Vector2d forward_point;
+          forward_point[0] = forward_tracking.source_points[featureID].x;
+          forward_point[1] = forward_tracking.source_points[featureID].y;
+          kdl.emplace_back(forward_point);
+
+          Eigen::Vector2d backward_point;
+          backward_point[0] = backward_tracking.source_points[featureID].x;
+          backward_point[1] = backward_tracking.source_points[featureID].y;
+          kdr.emplace_back(backward_point);
 
           stereo_trackedPoints.inliers.emplace_back(
               std::make_pair(featureID, featureID));
