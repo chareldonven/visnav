@@ -57,12 +57,28 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 using namespace cv;
 
 namespace visnav {
-// https://learnopencv.com/cropping-an-image-using-opencv/
+/// This method saves in kdl.corners the keypoints of the left stereo image.
+/// It also saves in fpp the pair (featureID, patchID)
+/// It saves all points from trackedPoints as keypoints and it finds new
+/// keypoints in the image
+
 void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
                                KeypointsPositions& kd, int num_features,
-                               FeaturePatchPair& fpp) {
+                               FeaturePatchPair& fpp,
+                               const TrackedPoints& trackedPoints,
+                               const Corners& corners, const FrameCamId fcidl) {
   kd.clear();
   fpp.clear();
+  // It saves all points from trackedPoints as keypoints
+
+  for (const auto& trackedPoint : trackedPoints) {
+    const auto& featureID = trackedPoint.featureID_current_frame;
+    kd.emplace_back(corners.at(fcidl).corners.at(featureID));
+    // This should not be neccessary
+    fpp.emplace(featureID, trackedPoint.patchID_current_frame);
+  }
+
+  // It finds new keypoints in the image
   cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
 
   const auto rowrange_0 = cv::Range(0, image.rows / 2);
@@ -97,7 +113,10 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
   double norm = cv::norm(cv::Mat(position0), cv::Mat(position1));
   return norm < threshold;
 }
-
+/// This method finds optical flow matches
+/// It saves the 2d positions of the right/next frame in kdr
+/// It does not change kdl
+/// It saves the ids of matches in stereo_trackedPoints
 void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
                               KeypointsPositions& kdr,
                               const pangolin::ManagedImage<uint8_t>& img_raw_0,
@@ -176,8 +195,8 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
   }
 }
 
-bool check_number_points_per_patch(FeaturePatchPair& fpp,
-                                   int min_points_per_patch) {
+bool enough_points_in_patch(const FeaturePatchPair& fpp,
+                            int min_points_per_patch) {
   int patch_counter[4];
   for (const auto elem : fpp) {
     patch_counter[elem.second - 1] += 1;
@@ -186,19 +205,25 @@ bool check_number_points_per_patch(FeaturePatchPair& fpp,
   bool res = false;
 
   for (int i = 0; i < 4; i++) {
-    res = res || patch_counter[0] < min_points_per_patch;
+    res = res || (patch_counter[i] < min_points_per_patch);
   }
 
-  return res;
+  return !res;
+}
+bool track_into_stereo(int current_frame, const FeaturePatchPair& fpp,
+                       int min_points_per_patch) {
+  if (current_frame == 0) return true;
+  return enough_points_in_patch(fpp, min_points_per_patch);
 }
 
-/// Stereo:
+/// Add new observations to the existing landmarks and add new landmarks to the
+/// map
 void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
                        const KeypointsData& kdl, const KeypointsData& kdr,
                        Landmarks& landmarks, MatchData& stereo_trackedPoints,
-                       const Corners& feature_corners, FeaturePatchPair& fpp,
-                       TrackedPoints& trackedPoints,
-                       const Calibration& calib_cam, LandmarkMatchData& md,
+                       FeaturePatchPair& fpp, TrackedPoints& trackedPoints,
+                       const Calibration& calib_cam,
+                       const Sophus::SE3d& current_pose,
                        TrackId& next_landmark_id) {
   // Also update trackedpoints
 
@@ -238,16 +263,17 @@ void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
         opengv::triangulation::triangulate(adapter, i);
     next_landmark_id = next_landmark_id + 1;
     const auto& new_trackID = next_landmark_id;
-    landmarks[new_trackID].p = md.T_w_c * triangulated_point;
+    landmarks[new_trackID].p = current_pose * triangulated_point;
     landmarks.at(new_trackID)
         .obs.emplace(fcidl, stereo_trackedPoints.inliers[i].first);
     landmarks.at(new_trackID)
         .obs.emplace(fcidr, stereo_trackedPoints.inliers[i].second);
     // feature id of the left image
-    md.inliers.emplace_back(new_trackID, stereo_trackedPoints.inliers[i].first);
+
     OpticalFlowData new_point;
     new_point.trackID = new_trackID;
     new_point.featureID_current_frame = stereo_trackedPoints.inliers[i].first;
+    new_point.trackID = fpp.at(new_point.featureID_current_frame);
     // Find new patch
     trackedPoints.emplace_back(new_point);
   }

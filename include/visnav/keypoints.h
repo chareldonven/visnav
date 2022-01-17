@@ -205,13 +205,6 @@ char pattern_31_y_b[256] = {
     -13, 12,  4,   6,   12,  1,   1,   1,   -13, -13, 4,   -2,  -3,  -2, 10,
     -9,  -1,  -2,  -8,  5,   10,  5,   5,   11,  -6,  -12, 9,   4,   -2, -2,
     -11};
-/**
- * @brief detectKeypoints_in_patch
- * @param img_raw
- * @param kd
- * @param num_features
- */
-// Change from pangolin to cv?
 
 void detectKeypoints_in_patch(const cv::Mat& patch,
                               const pangolin::ManagedImage<uint8_t>& img_raw,

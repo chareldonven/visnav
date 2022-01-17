@@ -89,7 +89,7 @@ constexpr int NUM_CAMS = 2;
 ///////////////////////////////////////////////////////////////////////////////
 /// Variables
 ///////////////////////////////////////////////////////////////////////////////
-
+int min_points_per_patch = 10;
 int current_frame = 0;
 Sophus::SE3d current_pose;
 bool take_keyframe = true;
@@ -137,7 +137,9 @@ Landmarks old_landmarks;
 /// cameras, landmarks, and feature_tracks; used for visualization and
 /// determining outliers; indexed by images
 ImageProjections image_projections;
+TrackedPoints trackedPoints;
 
+FeaturePatchPair fpp;
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
 ///////////////////////////////////////////////////////////////////////////////
@@ -781,9 +783,7 @@ bool next_step() {
 
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
 
-  if (take_keyframe) {
-    take_keyframe = false;
-
+  if (track_into_stereo(current_frame, fpp, min_points_per_patch)) {
     FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
     std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
@@ -802,36 +802,11 @@ bool next_step() {
     pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
     pangolin::ManagedImage<uint8_t> imgr = pangolin::LoadImage(images[fcidr]);
 
-    /*
-     *
-     * void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>&
-     img_raw, KeypointsPositions& kd, int num_features, MatchData& fpp)
-    */
+    divide_image_into_patches(imgl, kdl.corners, num_features_per_image, fpp,
+                              trackedPoints, feature_corners, fcidl);
 
-    FeaturePatchPair fpp;
-    divide_image_into_patches(imgl, kdl.corners, num_features_per_image, fpp);
-
-    /*
-    detectKeypointsAndDescriptors(imgl, kdl, num_features_per_image,
-                                  rotate_features);
-    detectKeypointsAndDescriptors(imgr, kdr, num_features_per_image,
-                                  rotate_features);
-    */
     md_stereo.T_i_j = T_0_1;
 
-    // Eigen::Matrix3d E;
-    // computeEssential(T_0_1, E);
-
-    /*
-    matchDescriptors(kdl.corner_descriptors, kdr.corner_descriptors,
-                     md_stereo.matches, feature_match_max_dist,
-                     feature_match_test_next_best);
-
-    findInliersEssential(kdl, kdr, calib_cam.intrinsics[0],
-                         calib_cam.intrinsics[1], E, 1e-3, md_stereo);
-    */
-    /// Compute optical flow and save the matches in stereo matches.
-    /// kdr save the keypoints of the right frame
     find_opticalflow_matches(fpp, kdl.corners, kdr.corners, imgl, imgr,
                              md_stereo);
     std::cout << "KF Found " << md_stereo.inliers.size() << " stereo-matches."
@@ -841,30 +816,11 @@ bool next_step() {
     feature_corners[fcidr] = kdr;
     feature_matches[std::make_pair(fcidl, fcidr)] = md_stereo;
 
-    LandmarkMatchData md;
-    /// Check for duplicates
-    /// Add new landmarks, create TrackIDs,
-    /// Update OpticalflowData
-    /// Update LandmarkMatchData
-
-    /*
-    find_matches_landmarks(kdl, landmarks, feature_corners, projected_points,
-                           projected_track_ids, match_max_dist_2d,
-                           feature_match_max_dist, feature_match_test_next_best,
-                           md);
-    */
-    std::cout << "KF Found " << md.matches.size() << " matches." << std::endl;
-
-    localize_camera(current_pose, calib_cam.intrinsics[0], kdl, landmarks,
-                    reprojection_error_pnp_inlier_threshold_pixel, md);
-
-    current_pose = md.T_w_c;
-
     cameras[fcidl].T_w_c = current_pose;
     cameras[fcidr].T_w_c = current_pose * T_0_1;
 
-    add_new_landmarks(fcidl, fcidr, kdl, kdr, calib_cam, md_stereo, md,
-                      landmarks, next_landmark_id);
+    add_new_landmarks(fcidl, fcidr, kdl, kdr, landmarks, md_stereo, fpp,
+                      trackedPoints, calib_cam, current_pose, next_landmark_id);
 
     remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
                          kf_frames);
@@ -881,12 +837,8 @@ bool next_step() {
     current_frame++;
     return true;
   } else {
-    /// Frame to frame tracking
-    // FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
+    FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
-    if (current_frame + 1 >= int(images.size()) / NUM_CAMS) return false;
-
-    FrameCamId fcid_0(current_frame, 0), fcid_1(current_frame + 1, 0);
     std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
         projected_points;
     std::vector<TrackId> projected_track_ids;
@@ -897,28 +849,24 @@ bool next_step() {
     std::cout << "Projected " << projected_track_ids.size() << " points."
               << std::endl;
 
-    KeypointsData kd0;
+    KeypointsData kdl;
 
-    pangolin::ManagedImage<uint8_t> img_0 = pangolin::LoadImage(images[fcid_0]);
+    pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
 
-    /*
-    detectKeypointsAndDescriptors(img_0, kd0, num_features_per_image,
+    detectKeypointsAndDescriptors(imgl, kdl, num_features_per_image,
                                   rotate_features);
-    */
-    /// Compute optical flow to next image
 
-    feature_corners[fcid_0] = kd0;
+    feature_corners[fcidl] = kdl;
 
     LandmarkMatchData md;
-    /*
     find_matches_landmarks(kdl, landmarks, feature_corners, projected_points,
                            projected_track_ids, match_max_dist_2d,
                            feature_match_max_dist, feature_match_test_next_best,
                            md);
-    */
+
     std::cout << "Found " << md.matches.size() << " matches." << std::endl;
 
-    localize_camera(current_pose, calib_cam.intrinsics[0], kd0, landmarks,
+    localize_camera(current_pose, calib_cam.intrinsics[0], kdl, landmarks,
                     reprojection_error_pnp_inlier_threshold_pixel, md);
 
     current_pose = md.T_w_c;
@@ -938,8 +886,8 @@ bool next_step() {
     }
 
     // update image views
-    change_display_to_image(fcid_0);
-    change_display_to_image(fcid_1);
+    change_display_to_image(fcidl);
+    change_display_to_image(fcidr);
 
     current_frame++;
     return true;
