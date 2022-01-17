@@ -117,10 +117,17 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
   return norm < threshold;
 }
 
-/// This method finds optical flow matches
-/// It saves the 2d positions of the right/next frame in kdr
+/// This method finds optical flow matches for the stereo matching
+/// fpp contains all featurepatchPairs
+/// Kdl contains the features of the given image.
+/// Kdr is empty.
+/// stereo_trackedPoints are empty.
+/// It saves the 2d positions of the right frame in kdr
 /// It does not change kdl
+/// fpp is not updated in this case
 /// It saves the ids of matches in stereo_trackedPoints
+///
+/// fpp needed????
 void find_opticalflow_stereo_matches(
     FeaturePatchPair& fpp, KeypointsPositions& kdl, KeypointsPositions& kdr,
     const pangolin::ManagedImage<uint8_t>& img_raw_0,
@@ -181,8 +188,6 @@ void find_opticalflow_stereo_matches(
         const FeatureId& featureID = forward_tracking.inliers[j];
         if (check_threshold(backward_tracking.target_points[i],
                             forward_tracking.source_points[featureID], 3)) {
-          // sourcePoints: cv::Point2f
-          // Eigen::Vector2d
           Eigen::Vector2d forward_point;
           forward_point[0] = forward_tracking.source_points[featureID].x;
           forward_point[1] = forward_tracking.source_points[featureID].y;
@@ -209,10 +214,14 @@ void find_opticalflow_stereo_matches(
 }
 
 /// This method computes frame to frame optical flow
+/// fpp contains all featurepatchPairs
+/// Kdl contains the features of the given image.
+/// Kdr is empty.
+/// trackedPoints contains all global tracked points.
 /// It save the new positions in the next frame of the tracked points in kdr
-/// It also finds the new patchID of the tracked points
-/// And the FeatureID in the next frame
-/// It saves the new feature-patch pairs in fpp
+/// It Finds the new patchID of the tracked points
+/// It als finds the FeatureID in the next frame
+/// These are saved in the new feature-patch pairs in fpp
 void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
                               KeypointsPositions& kdr,
                               const pangolin::ManagedImage<uint8_t>& img_raw_0,
