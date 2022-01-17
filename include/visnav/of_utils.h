@@ -96,6 +96,8 @@ void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
   detectKeypoints_in_patch(subimage3, img_raw, kd, num_features, fpp, 3);
   detectKeypoints_in_patch(subimage4, img_raw, kd, num_features, fpp, 4);
 }
+
+/// This methode returns the corresponding patch to a given point in an image
 PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
                      cv::Point2f point) {
   PatchID result = 0;
@@ -108,11 +110,13 @@ PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
   return result;
 }
 
+/// This Methode checks if two given points a close enough to each other
 bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
                      const int threshold) {
   double norm = cv::norm(cv::Mat(position0), cv::Mat(position1));
   return norm < threshold;
 }
+
 /// This method finds optical flow matches
 /// It saves the 2d positions of the right/next frame in kdr
 /// It does not change kdl
@@ -209,14 +213,13 @@ void find_opticalflow_stereo_matches(
 /// It also finds the new patchID of the tracked points
 /// And the FeatureID in the next frame
 /// It saves the new feature-patch pairs in fpp
-///
-
 void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
                               KeypointsPositions& kdr,
                               const pangolin::ManagedImage<uint8_t>& img_raw_0,
                               const pangolin::ManagedImage<uint8_t>& img_raw_1,
                               TrackedPoints& trackedPoints) {}
 
+/// This Method checks if all patch contains enough points
 bool enough_points_in_patch(const FeaturePatchPair& fpp,
                             int min_points_per_patch) {
   int patch_counter[4];
@@ -232,6 +235,10 @@ bool enough_points_in_patch(const FeaturePatchPair& fpp,
 
   return !res;
 }
+
+/// This checks if sterio matching is nessesary.
+/// In the First frame it has to do it in the following enough_points_in_patch
+/// is called
 bool track_into_stereo(int current_frame, const FeaturePatchPair& fpp,
                        int min_points_per_patch) {
   if (current_frame == 0) return true;
@@ -302,6 +309,7 @@ void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
   // Add matchdata in md
   // Update tracked points
 }
+
 /// Frame to frame: add new observations to landmarks and fill md.matches
 void update_landmarks(Landmarks& landmarks, TrackedPoints& trackedPoints,
                       const FrameCamId fcidl, LandmarkMatchData& md) {
@@ -313,6 +321,8 @@ void update_landmarks(Landmarks& landmarks, TrackedPoints& trackedPoints,
     landmark.obs.emplace(fcidl, trackedPoint.featureID_current_frame);
   }
 }
+
+/// Not changed for this project
 void project_landmarks(
     const Sophus::SE3d& current_pose,
     const std::shared_ptr<AbstractCamera<double>>& cam,
@@ -359,6 +369,7 @@ void project_landmarks(
   }
 }
 
+/// Not changed for this project
 void localize_camera(const Sophus::SE3d& current_pose,
                      const std::shared_ptr<AbstractCamera<double>>& cam,
                      const KeypointsData& kdl, const Landmarks& landmarks,
@@ -429,6 +440,7 @@ void localize_camera(const Sophus::SE3d& current_pose,
   }
 }
 
+/// Not changed for this project
 void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
                           Cameras& cameras, Landmarks& landmarks,
                           Landmarks& old_landmarks,
