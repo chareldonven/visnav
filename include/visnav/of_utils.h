@@ -67,8 +67,10 @@ struct OpticalFlowPairs {
 
 /// This method saves in kdl.corners the keypoints of the left stereo image.
 /// It also saves in fpp the pair (featureID, patchID)
-/// It saves all points from trackedPoints as keypoints and it finds new
-/// keypoints in the image
+/// In trackedPoints saves the keypoints that have been tracked until now. This
+/// means that the featureID and PatchID are for this image At the end of the
+/// method, kdl contains all points from trackedPoints and the new keypoints in
+/// the image. There can be duplicates!
 
 void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
                                KeypointsPositions& kd, int num_features,
@@ -125,17 +127,17 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
   return norm < threshold;
 }
 
-/// This method finds optical flow matches for the stereo matching
-/// fpp contains all featurepatchPairs
-/// Kdl contains the features of the given image.
-/// Kdr is empty.
-/// stereo_trackedPoints are empty.
-/// It saves the 2d positions of the right frame in kdr
-/// It does not change kdl
-/// fpp is not updated in this case
-/// It saves the ids of matches in stereo_trackedPoints
-///
-/// fpp needed????
+/// This method is called during stereo matching in order to track the keypoints
+/// saved in kdl into the stereo image. kdl stores both the keypoints tracked
+/// until now and the newkeypoints. The method will not change kdl. kdr is empty
+/// at first and then contains the inlier keypoints that could be tracked into
+/// it fpp contains all featurepatchPairs that have been updated by calling
+/// divide_image_into_patches At the end of the method, fpp will contain only
+/// the inlier pairs of featurepatch.
+
+/// stereo_trackedPoints is empty at first and will contain all inlier matches
+/// from tracking with optical flow
+
 void find_opticalflow_stereo_matches(
     FeaturePatchPair& fpp, KeypointsPositions& kdl, KeypointsPositions& kdr,
     const pangolin::ManagedImage<uint8_t>& img_raw_0,
@@ -145,24 +147,32 @@ void find_opticalflow_stereo_matches(
   cv::Mat image_1(img_raw_1.h, img_raw_1.w, CV_8U, img_raw_1.ptr);
 
   OpticalFlowPairs forward_tracking, backward_tracking;
-  // alle kp von allen position speichern in kdl
+  // We need cv::Point2f in order to call calcOpticalFlowPyrLk()
   for (const auto& position : kdl) {
-    cv::Point2f points;
-    points.x = position[0];
-    points.y = position[1];
-    forward_tracking.source_points.emplace_back(points);
+    cv::Point2f point;
+    point.x = position[0];
+    point.y = position[1];
+    forward_tracking.source_points.emplace_back(point);
   }
   std::vector<uchar> status;
   std::vector<float> err;
+  // forward_tracking.target_points contains the calculated 2d positions from
+  // forward_tracking.source_points
   calcOpticalFlowPyrLK(image_0, image_1, forward_tracking.source_points,
                        forward_tracking.target_points, status, err);
 
   for (size_t i = 0; i < forward_tracking.target_points.size(); i++) {
+    // featureID is the index of the keypoint in kdl
     FeatureId featureID = i;
     if (!status[i]) {
+      // outliers contains the featureIDs that have not been tracked into the
+      // stereo image
       forward_tracking.outliers.emplace_back(featureID);
     } else {
+      // inliers contains the featureIDs that have been tracked into the stereo
+      // image
       forward_tracking.inliers.emplace_back(featureID);
+      // only the points that have a positive status should be tracked back
       backward_tracking.source_points.emplace_back(
           forward_tracking.target_points[i]);
     }
@@ -170,16 +180,22 @@ void find_opticalflow_stereo_matches(
 
   status.clear();
   err.clear();
+  // Track back from the right image to the left image
   calcOpticalFlowPyrLK(image_1, image_0, backward_tracking.source_points,
                        backward_tracking.target_points, status, err);
 
   size_t last_index = 0;
   for (size_t k = 0; k < backward_tracking.target_points.size(); k++) {
+    // Here featureID is again the index of the keypoint in the kdl
     FeatureId featureID = forward_tracking.inliers[k];
     if (!status[k]) {
+      // outliers contains the featureIDs that have not been tracked back
       backward_tracking.outliers.emplace_back(featureID);
     } else {
+      // the featureIDs that have been tracked back
       backward_tracking.inliers.emplace_back(featureID);
+      // backward_tracking.target_points contains only the inlier points from
+      // forward and backward tracking
       backward_tracking.target_points[last_index] =
           backward_tracking.target_points[k];
       last_index++;
@@ -187,11 +203,13 @@ void find_opticalflow_stereo_matches(
   }
   backward_tracking.target_points.resize(last_index);
 
-  // Compare tracking_points to tracking_points_backward! Should we use a
-  // threshold? 3  pixels -> 1
+  // Compare tracking_points to tracking_points_backward!
+  // threshold 3 pixels
 
   for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
+    // backward_tracking.inliers is the smallest set of inliers
     for (size_t j = 0; j < forward_tracking.inliers.size(); j++) {
+      // this set contains also the back tracked points with negative status
       if (backward_tracking.inliers[i] == forward_tracking.inliers[j]) {
         const FeatureId& featureIDL = forward_tracking.inliers[j];
         const FeatureId& featureIDR = backward_tracking.inliers[i];
@@ -200,7 +218,14 @@ void find_opticalflow_stereo_matches(
           Eigen::Vector2d forward_point;
           forward_point[0] = forward_tracking.source_points[featureIDL].x;
           forward_point[1] = forward_tracking.source_points[featureIDL].y;
-          kdl.emplace_back(forward_point);
+          // This is an inlier point from the left stereo image
+          // Update fpp with this
+
+          /// Todo:
+
+          // Find the inlier point in the right image and add it to kdr
+
+          // Add the pair to matches
 
           Eigen::Vector2d backward_point;
           backward_point[0] = backward_tracking.source_points[featureIDR].x;
@@ -442,18 +467,6 @@ void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
         fpp.at(new_trackedPoint.featureID_current_frame);
     new_trackedPoint.trackID = new_trackID;
     trackedPoints.emplace_back(new_trackedPoint);
-  }
-}
-
-/// Frame to frame: add new observations to landmarks and fill md.matches
-void update_landmarks(Landmarks& landmarks, TrackedPoints& trackedPoints,
-                      const FrameCamId fcidl, LandmarkMatchData& md) {
-  for (const auto& trackedPoint : trackedPoints) {
-    const auto& trackID = trackedPoint.trackID;
-    // Find corresponding landmark
-    auto landmark = landmarks.at(trackID);
-
-    landmark.obs.emplace(fcidl, trackedPoint.featureID_current_frame);
   }
 }
 

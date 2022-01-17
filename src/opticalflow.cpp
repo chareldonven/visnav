@@ -776,7 +776,7 @@ void load_data(const std::string& dataset_path, const std::string& calib_path) {
 /// Here the algorithmically interesting implementation begins
 ///////////////////////////////////////////////////////////////////////////////
 void track_frame_to_frame() {
-  FrameCamId fcidl(current_frame, 0), fcidr(current_frame + 1, 0);
+  FrameCamId fcid_current(current_frame, 0), fcid_next(current_frame + 1, 0);
   std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
       projected_points;
   std::vector<TrackId> projected_track_ids;
@@ -787,22 +787,26 @@ void track_frame_to_frame() {
   std::cout << "Projected " << projected_track_ids.size() << " points."
             << std::endl;
 
-  KeypointsData kdl = feature_corners.at(fcidl);
-  KeypointsData kdr;
-  pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
-  pangolin::ManagedImage<uint8_t> imgr = pangolin::LoadImage(images[fcidr]);
+  KeypointsData kd_current = feature_corners.at(fcid_current);
+  KeypointsData kd_next;
+  pangolin::ManagedImage<uint8_t> img_current =
+      pangolin::LoadImage(images[fcid_current]);
+  pangolin::ManagedImage<uint8_t> img_next =
+      pangolin::LoadImage(images[fcid_next]);
 
-  find_opticalflow_matches(fpp, kdl.corners, kdr.corners, imgl, imgr,
-                           trackedPoints);
-  feature_corners[fcidr] = kdr;
+  find_opticalflow_matches(fpp, kd_current.corners, kd_next.corners,
+                           img_current, img_next, trackedPoints);
+  feature_corners[fcid_next] = kd_next;
 
   LandmarkMatchData md;
 
-  update_landmarks(landmarks, trackedPoints, fcidr, md);
-
+  for (const auto& trackedPoint : trackedPoints) {
+    md.matches.emplace_back(trackedPoint.featureID_current_frame,
+                            trackedPoint.trackID);
+  }
   std::cout << "Found " << md.matches.size() << " matches." << std::endl;
 
-  localize_camera(current_pose, calib_cam.intrinsics[0], kdl, landmarks,
+  localize_camera(current_pose, calib_cam.intrinsics[0], kd_current, landmarks,
                   reprojection_error_pnp_inlier_threshold_pixel, md);
 
   current_pose = md.T_w_c;
@@ -817,8 +821,8 @@ void track_frame_to_frame() {
   }
 
   // update image views
-  change_display_to_image(fcidl);
-  change_display_to_image(fcidr);
+  change_display_to_image(fcid_current);
+  change_display_to_image(fcid_next);
   current_frame++;
 }
 void track_into_stereo() {
