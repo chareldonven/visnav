@@ -826,7 +826,7 @@ void track_frame_to_frame() {
   change_display_to_image(fcid_next);
   current_frame++;
 }
-void track_into_stereo() {
+void stereo_tracking() {
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
@@ -877,28 +877,26 @@ void track_into_stereo() {
   change_display_to_image(fcidr);
 
   compute_projections();
-  if (current_frame + 1 < int(images.size()) / NUM_CAMS) track_frame_to_frame();
 }
 
 // Execute next step in the overall odometry pipeline. Call this repeatedly
 // until it returns false for automatic execution.
 bool next_step() {
   if (current_frame >= int(images.size()) / NUM_CAMS) return false;
-  if (current_frame == 1) {
-    std::cout << "Is 1!!!" << std::endl;
-  }
+
   // Check how to use opt_running and opt_finished
-  if (track_into_stereo(current_frame, fpp, min_points_per_patch) &&
+  if (should_track_into_stereo(current_frame, fpp, min_points_per_patch) &&
       !opt_running && !opt_finished) {
-    track_into_stereo();
-
-    return true;
-  } else {
-    if (current_frame + 1 < int(images.size()) / NUM_CAMS)
-      track_frame_to_frame();
+    stereo_tracking();
 
     return true;
   }
+  if (current_frame + 1 < int(images.size()) / NUM_CAMS)
+    track_frame_to_frame();
+  else
+    return false;
+
+  return true;
 }
 
 // Compute reprojections for all landmark observations for visualization and

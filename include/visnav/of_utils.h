@@ -493,8 +493,8 @@ bool enough_points_in_patch(const FeaturePatchPair& fpp,
 /// This checks if sterio matching is nessesary.
 /// In the First frame it has to do it in the following enough_points_in_patch
 /// is called
-bool track_into_stereo(int current_frame, const FeaturePatchPair& fpp,
-                       int min_points_per_patch) {
+bool should_track_into_stereo(int current_frame, const FeaturePatchPair& fpp,
+                              int min_points_per_patch) {
   if (current_frame == 0) return true;
   return enough_points_in_patch(fpp, min_points_per_patch);
 }
