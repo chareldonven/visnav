@@ -173,11 +173,12 @@ void filter_for_duplicates(TrackedPoints& trackedPoints, KeypointsPositions& kd,
 
 /// This method is called during stereo matching in order to track the keypoints
 /// saved in kdl into the stereo image. kdl stores both the keypoints tracked
-/// until now and the newkeypoints. The method will not change kdl. kdr is empty
-/// at first and then contains the inlier keypoints that could be tracked into
-/// it. fpp contains all featurepatchPairs that have been updated by calling
-/// divide_image_into_patches At the end of the method, fpp will contain only
-/// the inlier pairs of featurepatch.
+/// until now and the new keypoints. The method will not change kdl.This means
+/// that all keypoints are saved there, not only the inlier keypoints. kdr is
+/// empty at first and then contains the inlier keypoints that could be tracked
+/// into it. fpp contains all featurepatchPairs that have been updated by
+/// calling divide_image_into_patches At the end of the method, fpp will contain
+/// only the inlier pairs of featurepatch.
 
 /// stereo_trackedPoints is empty at first and will contain all inlier matches
 /// from tracking with optical flow
@@ -250,7 +251,7 @@ void find_opticalflow_stereo_matches(
   // Compare tracking_points to tracking_points_backward!
   // threshold 3 pixels
   FeaturePatchPair temp_fpp;
-  // Do featureIDs start from 0 or 1?
+
   FeatureId temp_right_featureID = 0;
   for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
     // backward_tracking.inliers is the smallest set of inliers
@@ -273,7 +274,7 @@ void find_opticalflow_stereo_matches(
               forward_tracking.source_points[featureID_fti].y;
           // This is an inlier point from the left stereo image
           // Update fpp with this
-          std::cout << "FeatureID_fti: " << featureID_fti << std::endl;
+
           temp_fpp.emplace(featureID_fti, fpp.at(featureID_fti));
 
           Eigen::Vector2d inlier_keypoint_right;
@@ -294,19 +295,41 @@ void find_opticalflow_stereo_matches(
       }
     }
   }
+
+  fpp.clear();
+  for (const auto& fpp_pair : temp_fpp) {
+    fpp.emplace(fpp_pair);
+  }
 }
 
-/// This method is called during frame to frame tracking
-/// fpp contains all featurepatchPairs
-/// Kdl contains the features of the given image.
-/// Kdr is empty.
-/// trackedPoints contains all global tracked points.
-/// It save the new positions in the next frame of the tracked points in kdr
-/// It Finds the new patchID of the tracked points
-/// It als finds the FeatureID in the next frame
-/// These are saved in the new feature-patch pairs in fpp
-void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
-                              KeypointsPositions& kdr,
+/// This method is called during frame to frame tracking in order to track the
+/// keypoints saved in  kd_current into the next image. kd_current strores the
+/// keypoints of the current image, which are either the inlier keypoints in the
+/// left frame after stereo-tracking or the tracked points from the previous
+/// left frame. At first it contains feature_corners.at(fcid_current); where if
+/// the previous step was stereo tracking, it contains all keypoints of the left
+/// frame, not only the inlier keypoints. If the previous step was
+/// frame_to_frame tracking, it contains only the inlier keypoints.
+///
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Will the method change kd_current? -> I think not
+///
+/// kd_next is empty at first and at the end of the method it should contain the
+/// inlier keypoints that could be tracked into  the next frame
+///
+/// fpp contains the result of the previous phase.
+/// This means, if the previous step was stereo_tracking, it contains the result
+/// from stereo_matching, which is all the inlier pairs from the left image. If
+/// the previous step was frame to frame tracking, then it contains the result
+/// of this method, which is also the inlier keypoints from the current_image
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// At the end, it should contain the inlier pairs of the next_image.
+///  tracked_points contains the tracked points into the current_image and at
+///  the end should contain the tracked_points into the next_image
+///
+void find_opticalflow_matches(FeaturePatchPair& fpp,
+                              KeypointsPositions& kd_current,
+                              KeypointsPositions& kd_next,
                               const pangolin::ManagedImage<uint8_t>& img_raw_0,
                               const pangolin::ManagedImage<uint8_t>& img_raw_1,
                               TrackedPoints& trackedPoints) {
@@ -314,24 +337,41 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
   cv::Mat image_1(img_raw_1.h, img_raw_1.w, CV_8U, img_raw_1.ptr);
 
   OpticalFlowPairs forward_tracking, backward_tracking;
-  // alle kp von allen position speichern in kdl
-  for (const auto& position : kdl) {
-    cv::Point2f points;
-    points.x = position[0];
-    points.y = position[1];
-    forward_tracking.source_points.emplace_back(points);
+  // We need cv::Point2f in order to call calcOpticalFlowPyrLk()
+  // In stereo we track all points from kd_current, but what we here actually
+  // want to track are only the inlier keypoints The FeatureIDs of these points
+  // are saved in tracked_points
+
+  std::vector<TrackId> new_trackIDs;
+  for (const auto& tracked_point : trackedPoints) {
+    const auto& featureID = tracked_point.featureID_current_frame;
+    const auto& trackID = tracked_point.trackID;
+    new_trackIDs.emplace_back(trackID);
+    cv::Point2f point;
+    point.x = kd_current[featureID].x();
+    point.y = kd_current[featureID].y();
+    forward_tracking.source_points.emplace_back(point);
   }
+  trackedPoints.clear();
   std::vector<uchar> status;
   std::vector<float> err;
+  // forward_tracking.target_points contains the calculated 2d positions in the
+  // right image. It has the same dimension as forward_tracking.source_points
   calcOpticalFlowPyrLK(image_0, image_1, forward_tracking.source_points,
                        forward_tracking.target_points, status, err);
 
   for (size_t i = 0; i < forward_tracking.target_points.size(); i++) {
+    // featureID is the index of the keypoint in kd_current
     FeatureId featureID = i;
     if (!status[i]) {
+      // outliers contains the featureIDs that have not been tracked into the
+      // stereo image
       forward_tracking.outliers.emplace_back(featureID);
     } else {
+      // inliers contains the featureIDs that have been tracked into the stereo
+      // image
       forward_tracking.inliers.emplace_back(featureID);
+      // only the points that have a positive status should be tracked back
       backward_tracking.source_points.emplace_back(
           forward_tracking.target_points[i]);
     }
@@ -339,16 +379,22 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
 
   status.clear();
   err.clear();
+  // Track back from the right image to the left image
   calcOpticalFlowPyrLK(image_1, image_0, backward_tracking.source_points,
                        backward_tracking.target_points, status, err);
 
   size_t last_index = 0;
   for (size_t k = 0; k < backward_tracking.target_points.size(); k++) {
+    // Here featureID is again the index of the keypoint in the kd_current
     FeatureId featureID = forward_tracking.inliers[k];
     if (!status[k]) {
+      // outliers contains the featureIDs that have not been tracked back
       backward_tracking.outliers.emplace_back(featureID);
     } else {
+      // the featureIDs that have been tracked back
       backward_tracking.inliers.emplace_back(featureID);
+      // backward_tracking.target_points contains only the inlier points from
+      // forward and backward tracking
       backward_tracking.target_points[last_index] =
           backward_tracking.target_points[k];
       last_index++;
@@ -356,50 +402,68 @@ void find_opticalflow_matches(FeaturePatchPair& fpp, KeypointsPositions& kdl,
   }
   backward_tracking.target_points.resize(last_index);
 
-  // Compare tracking_points to tracking_points_backward! Should we use a
-  // threshold? 3  pixels -> 1
+  // Compare tracking_points to tracking_points_backward!
+  // threshold 3 pixels
+  FeaturePatchPair temp_fpp;
 
-  TrackedPoints new_tracked_Points;
   for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
+    // backward_tracking.inliers is the smallest set of inliers
     for (size_t j = 0; j < forward_tracking.inliers.size(); j++) {
-      if (backward_tracking.inliers[i] == forward_tracking.inliers[j]) {
-        const FeatureId& featureID = forward_tracking.inliers[j];
-        const FeatureId& featureID_next = backward_tracking.inliers[i];
+      const auto& featureID_bti = backward_tracking.inliers[i];
+      const auto& featureID_fti = forward_tracking.inliers[j];
+      // this set contains also the back tracked points with negative status
+      if (featureID_bti == featureID_fti) {
+        // i is the right index because target_points and inliers are assumed to
+        // have the same dimension featureID_fti is the right index because this
+        // is the point with the same featureID as featureID_bti and thus should
+        // have the same 3d position as it
+        /// TODO: Check whether check_threshhold checks for pixel units
         if (check_threshold(backward_tracking.target_points[i],
-                            forward_tracking.source_points[featureID], 3)) {
-          Eigen::Vector2d forward_point;
-          forward_point[0] = forward_tracking.source_points[featureID].x;
-          forward_point[1] = forward_tracking.source_points[featureID].y;
-          kdl.emplace_back(forward_point);
+                            forward_tracking.source_points[featureID_fti], 3)) {
+          Eigen::Vector2d inlier_keypoint_current;
+          inlier_keypoint_current[0] =
+              forward_tracking.source_points[featureID_fti].x;
+          inlier_keypoint_current[1] =
+              forward_tracking.source_points[featureID_fti].y;
+          // This is an inlier point from the left stereo image
+          // fpp should contain the next pairs. So the featureID is the index in
+          // the backward inliers As for the patchID, we should compute it.
+          const auto& patchID = find_patchID(
+              img_raw_1, forward_tracking.target_points[featureID_fti]);
 
-          Eigen::Vector2d backward_point;
-          backward_point[0] = backward_tracking.source_points[featureID_next].x;
-          backward_point[1] = backward_tracking.source_points[featureID_next].y;
-          kdr.emplace_back(backward_point);
+          temp_fpp.emplace(i, patchID);
 
-          PatchID pID = find_patchID(
-              img_raw_1, backward_tracking.source_points[featureID]);
+          Eigen::Vector2d inlier_keypoint_next;
+          inlier_keypoint_next[0] =
+              forward_tracking.target_points[featureID_fti].x;
+          inlier_keypoint_next[1] =
+              forward_tracking.target_points[featureID_fti].y;
+          // Find the inlier point in the right image and add it to kd_next
+          kd_next.emplace_back(inlier_keypoint_next);
+          /* Update trackedPoints
 
-          fpp[featureID] = pID;
+           * trackedPoints should contain the inlier points of the next_image
+           * featureID is the next featureID it has in the next image -> so the
+           index in the backward inliers
+           * The patchID we know from fpp.
+           * The trackID should remain the same; How do we now which one?
+           * */
+          OpticalFlowData new_trackedPoint;
+          new_trackedPoint.trackID = new_trackIDs[featureID_fti];
+          new_trackedPoint.featureID_current_frame = i;
+          new_trackedPoint.patchID_current_frame = find_patchID(
+              img_raw_1, forward_tracking.target_points[featureID_fti]);
 
-          OpticalFlowData ofd;
-
-          for (size_t k = 0; k < trackedPoints.size(); k++) {
-            if (trackedPoints[k].featureID_current_frame == featureID) {
-              ofd.trackID = trackedPoints[k].trackID;
-              break;
-            }
-          }
-          ofd.patchID_current_frame = pID;
-          ofd.featureID_current_frame = featureID_next;
-
-          new_tracked_Points.push_back(ofd);
+          trackedPoints.emplace_back(new_trackedPoint);
         }
       }
     }
   }
-  trackedPoints.clear();
-  trackedPoints = new_tracked_Points;
+
+  fpp.clear();
+  for (const auto& fpp_pair : temp_fpp) {
+    fpp.emplace(fpp_pair);
+  }
 }
 
 /// This Method checks if all patch contains enough points
