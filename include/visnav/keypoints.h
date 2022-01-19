@@ -214,10 +214,13 @@ void detectKeypoints_in_patch(const cv::Mat& patch,
   std::vector<cv::Point2f> points;
   goodFeaturesToTrack(patch, points, num_features, 0.01, 8);
 
+  int x_increment = patchID % 2 == 0 ? img_raw.w : 0;
+  int y_increment = patchID >= 3 ? img_raw.h : 0;
+
   FeatureId temp = kd.size();
   for (size_t i = 0; i < points.size(); i++) {
     if (img_raw.InBounds(points[i].x, points[i].y, EDGE_THRESHOLD)) {
-      kd.emplace_back(points[i].x, points[i].y);
+      kd.emplace_back(points[i].x + x_increment, points[i].y + y_increment);
       fpp.insert(std::make_pair(temp, patchID));
       temp++;
     }
