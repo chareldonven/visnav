@@ -129,6 +129,48 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
   return norm < threshold;
 }
 
+bool check_duplicates(const Eigen::Vector2d& point0,
+                      const Eigen::Vector2d& point1, const double threshold) {
+  double norm = (point0 - point1).norm();
+  return norm < threshold;
+}
+
+/// This function removes all duplicates rom the traked points. It is called
+/// when there are to many points tracked. It searches in the given keypoints
+/// for points which are too close to each other and saves the index of that
+/// poisition. Then it removes points at the found index position from kd bus
+/// also from the tracked_points. Additionally it removes the entry in the fpp.
+/// Finally the featureIds are newly distributed for the tracked points and the
+/// fpp.
+void filter_for_duplicates(TrackedPoints& trackedPoints, KeypointsPositions& kd,
+                           FeaturePatchPair& fpp) {
+  std::vector<int> indexVector;
+  for (size_t i = kd.size() - 1; i >= 0; i--) {
+    for (size_t j = i - 1; j > kd.size(); j--) {
+      if (check_duplicates(kd.at(i), kd.at(j), 1e-5)) {
+        indexVector.push_back(i);
+        break;
+      }
+    }
+  }
+
+  for (size_t i = 0; i < indexVector.size(); i++) {
+    kd.erase(kd.begin() + indexVector.at(i));
+    FeatureId featureId =
+        trackedPoints.at(indexVector.at(i)).featureID_current_frame;
+    trackedPoints.erase(trackedPoints.begin() + indexVector.at(i));
+    fpp.erase(featureId);
+  }
+
+  int index = 0;
+  FeaturePatchPair new_fpp;
+  for (size_t i = 0; i < trackedPoints.size(); i++) {
+    new_fpp[index] = trackedPoints.at(i).patchID_current_frame;
+    trackedPoints.at(i).featureID_current_frame = index;
+  }
+  fpp = new_fpp;
+}
+
 /// This method is called during stereo matching in order to track the keypoints
 /// saved in kdl into the stereo image. kdl stores both the keypoints tracked
 /// until now and the newkeypoints. The method will not change kdl. kdr is empty
