@@ -102,7 +102,9 @@ void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
   cv::Mat subimage4(image, rowrange_1, colrange_1);
 
   detectKeypoints_in_patch(subimage1, img_raw, kd, num_features, fpp, 1);
+
   detectKeypoints_in_patch(subimage2, img_raw, kd, num_features, fpp, 2);
+
   detectKeypoints_in_patch(subimage3, img_raw, kd, num_features, fpp, 3);
   detectKeypoints_in_patch(subimage4, img_raw, kd, num_features, fpp, 4);
 }
@@ -131,7 +133,7 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
 /// saved in kdl into the stereo image. kdl stores both the keypoints tracked
 /// until now and the newkeypoints. The method will not change kdl. kdr is empty
 /// at first and then contains the inlier keypoints that could be tracked into
-/// it fpp contains all featurepatchPairs that have been updated by calling
+/// it. fpp contains all featurepatchPairs that have been updated by calling
 /// divide_image_into_patches At the end of the method, fpp will contain only
 /// the inlier pairs of featurepatch.
 
@@ -156,8 +158,8 @@ void find_opticalflow_stereo_matches(
   }
   std::vector<uchar> status;
   std::vector<float> err;
-  // forward_tracking.target_points contains the calculated 2d positions from
-  // forward_tracking.source_points
+  // forward_tracking.target_points contains the calculated 2d positions in the
+  // right image. It has the same dimension as forward_tracking.source_points
   calcOpticalFlowPyrLK(image_0, image_1, forward_tracking.source_points,
                        forward_tracking.target_points, status, err);
 
@@ -205,44 +207,54 @@ void find_opticalflow_stereo_matches(
 
   // Compare tracking_points to tracking_points_backward!
   // threshold 3 pixels
-
+  FeaturePatchPair temp_fpp;
+  // Do featureIDs start from 0 or 1?
+  FeatureId temp_right_featureID = 0;
   for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
     // backward_tracking.inliers is the smallest set of inliers
     for (size_t j = 0; j < forward_tracking.inliers.size(); j++) {
+      const auto& featureID_bti = backward_tracking.inliers[i];
+      const auto& featureID_fti = forward_tracking.inliers[j];
       // this set contains also the back tracked points with negative status
-      if (backward_tracking.inliers[i] == forward_tracking.inliers[j]) {
-        const FeatureId& featureIDL = forward_tracking.inliers[j];
-        const FeatureId& featureIDR = backward_tracking.inliers[i];
+      if (featureID_bti == featureID_fti) {
+        // i is the right index because target_points and inliers are assumed to
+        // have the same dimension featureID_fti is the right index because this
+        // is the point with the same featureID as featureID_bti and thus should
+        // have the same 3d position as it
+        /// TODO: Check whether check_threshhold checks for pixel units
         if (check_threshold(backward_tracking.target_points[i],
-                            forward_tracking.source_points[featureIDL], 3)) {
-          Eigen::Vector2d forward_point;
-          forward_point[0] = forward_tracking.source_points[featureIDL].x;
-          forward_point[1] = forward_tracking.source_points[featureIDL].y;
+                            forward_tracking.source_points[featureID_fti], 3)) {
+          Eigen::Vector2d inlier_keypoint_left;
+          inlier_keypoint_left[0] =
+              forward_tracking.source_points[featureID_fti].x;
+          inlier_keypoint_left[1] =
+              forward_tracking.source_points[featureID_fti].y;
           // This is an inlier point from the left stereo image
           // Update fpp with this
+          std::cout << "FeatureID_fti: " << featureID_fti << std::endl;
+          temp_fpp.emplace(featureID_fti, fpp.at(featureID_fti));
 
-          /// Todo:
-
+          Eigen::Vector2d inlier_keypoint_right;
+          inlier_keypoint_right[0] =
+              forward_tracking.target_points[featureID_fti].x;
+          inlier_keypoint_right[1] =
+              forward_tracking.target_points[featureID_fti].y;
           // Find the inlier point in the right image and add it to kdr
-
+          kdr.emplace_back(inlier_keypoint_right);
           // Add the pair to matches
 
-          Eigen::Vector2d backward_point;
-          backward_point[0] = backward_tracking.source_points[featureIDR].x;
-          backward_point[1] = backward_tracking.source_points[featureIDR].y;
-          kdr.emplace_back(backward_point);
-
           stereo_trackedPoints.inliers.emplace_back(
-              std::make_pair(featureIDL, featureIDR));
+              std::make_pair(featureID_fti, temp_right_featureID));
           stereo_trackedPoints.matches.emplace_back(
-              std::make_pair(featureIDL, featureIDR));
+              std::make_pair(featureID_fti, temp_right_featureID));
+          temp_right_featureID++;
         }
       }
     }
   }
 }
 
-/// This method computes frame to frame optical flow
+/// This method is called during frame to frame tracking
 /// fpp contains all featurepatchPairs
 /// Kdl contains the features of the given image.
 /// Kdr is empty.

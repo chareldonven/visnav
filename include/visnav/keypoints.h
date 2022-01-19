@@ -214,13 +214,16 @@ void detectKeypoints_in_patch(const cv::Mat& patch,
   std::vector<cv::Point2f> points;
   goodFeaturesToTrack(patch, points, num_features, 0.01, 8);
 
-  const auto& last_index = kd.size();
+  FeatureId temp = kd.size();
   for (size_t i = 0; i < points.size(); i++) {
     if (img_raw.InBounds(points[i].x, points[i].y, EDGE_THRESHOLD)) {
       kd.emplace_back(points[i].x, points[i].y);
-      fpp.emplace(last_index + i, patchID);
+      fpp.insert(std::make_pair(temp, patchID));
+      temp++;
     }
   }
+  std::cout << "Size of kd: " << kd.size() << " and size of fpp: " << fpp.size()
+            << std::endl;
 }
 
 void detectKeypoints(const pangolin::ManagedImage<uint8_t>& img_raw,
