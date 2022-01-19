@@ -49,9 +49,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/serialization.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/videoio/videoio.hpp>
-#include <opencv2/video/video.hpp>
+//#include <opencv2/highgui/highgui.hpp>
+//#include <opencv2/videoio/videoio.hpp>
+//#include <opencv2/video/video.hpp>
 #include <opencv2/video/tracking.hpp>
 
 using namespace cv;
@@ -68,7 +68,8 @@ struct OpticalFlowPairs {
 /// This method saves in kdl.corners the keypoints of the left stereo image.
 /// It also saves in fpp the pair (featureID, patchID)
 /// In trackedPoints saves the keypoints that have been tracked until now. This
-/// means that the featureID and PatchID are for this image At the end of the
+/// means that the featureID and PatchID are for this image.
+///  At the end of the
 /// method, kdl contains all points from trackedPoints and the new keypoints in
 /// the image. There can be duplicates!
 
@@ -112,11 +113,13 @@ void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
 /// This method returns the corresponding patch to a given point in an image
 PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
                      cv::Point2f point) {
+  cv::Mat img(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
+
   PatchID result = 1;
-  if (point.x > img_raw.w / 2) {
+  if (point.x > img.cols / 2) {
     result = result + 1;
   }
-  if (point.y > img_raw.h / 2) {
+  if (point.y > img.rows / 2) {
     result = result + 2;
   }
   return result;

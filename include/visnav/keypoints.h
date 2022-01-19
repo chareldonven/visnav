@@ -43,10 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/videoio/videoio.hpp>
-#include <opencv2/video/video.hpp>
-#include <opencv2/video/tracking.hpp>
+
 #include <visnav/common_types.h>
 namespace keypoints_intern {
 // Rotates a 2d vector by angle
@@ -213,20 +210,21 @@ void detectKeypoints_in_patch(const cv::Mat& patch,
   cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
   std::vector<cv::Point2f> points;
   goodFeaturesToTrack(patch, points, num_features, 0.01, 8);
+  // Find real coordinates of point!!!
 
-  int x_increment = patchID % 2 == 0 ? img_raw.w : 0;
-  int y_increment = patchID >= 3 ? img_raw.h : 0;
+  int x_increment = patchID % 2 == 0 ? patch.cols : 0;
+  int y_increment = patchID >= 3 ? patch.rows : 0;
 
   FeatureId temp = kd.size();
   for (size_t i = 0; i < points.size(); i++) {
-    if (img_raw.InBounds(points[i].x, points[i].y, EDGE_THRESHOLD)) {
-      kd.emplace_back(points[i].x + x_increment, points[i].y + y_increment);
+    const auto& x = points[i].x + x_increment;
+    const auto& y = points[i].y + y_increment;
+    if (img_raw.InBounds(x, y, EDGE_THRESHOLD)) {
+      kd.emplace_back(x, y);
       fpp.insert(std::make_pair(temp, patchID));
       temp++;
     }
   }
-  std::cout << "Size of kd: " << kd.size() << " and size of fpp: " << fpp.size()
-            << std::endl;
 }
 
 void detectKeypoints(const pangolin::ManagedImage<uint8_t>& img_raw,
