@@ -145,8 +145,8 @@ bool check_duplicates(const Eigen::Vector2d& point0,
 void filter_for_duplicates(TrackedPoints& trackedPoints, KeypointsPositions& kd,
                            FeaturePatchPair& fpp) {
   std::vector<int> indexVector;
-  for (size_t i = kd.size() - 1; i >= 0; i--) {
-    for (size_t j = i - 1; j > kd.size(); j--) {
+  for (int i = kd.size() - 1; i >= 0; i--) {
+    for (int j = i - 1; j >= 0; j--) {
       if (check_duplicates(kd.at(i), kd.at(j), 1e-5)) {
         indexVector.push_back(i);
         break;
