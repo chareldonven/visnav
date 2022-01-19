@@ -796,6 +796,7 @@ void track_frame_to_frame() {
 
   find_opticalflow_matches(fpp, kd_current.corners, kd_next.corners,
                            img_current, img_next, trackedPoints);
+
   feature_corners[fcid_next] = kd_next;
 
   LandmarkMatchData md;
@@ -877,14 +878,16 @@ void track_into_stereo() {
 
   compute_projections();
   if (current_frame + 1 < int(images.size()) / NUM_CAMS) track_frame_to_frame();
-  current_frame++;
 }
 
 // Execute next step in the overall odometry pipeline. Call this repeatedly
 // until it returns false for automatic execution.
 bool next_step() {
   if (current_frame >= int(images.size()) / NUM_CAMS) return false;
-
+  if (current_frame == 1) {
+    std::cout << "Is 1!!!" << std::endl;
+  }
+  // Check how to use opt_running and opt_finished
   if (track_into_stereo(current_frame, fpp, min_points_per_patch) &&
       !opt_running && !opt_finished) {
     track_into_stereo();

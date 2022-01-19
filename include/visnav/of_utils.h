@@ -112,7 +112,7 @@ void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
 /// This method returns the corresponding patch to a given point in an image
 PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
                      cv::Point2f point) {
-  PatchID result = 0;
+  PatchID result = 1;
   if (point.x > img_raw.w / 2) {
     result = result + 1;
   }
@@ -468,9 +468,13 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
 
 /// This Method checks if all patch contains enough points
 bool enough_points_in_patch(const FeaturePatchPair& fpp,
-                            int min_points_per_patch) {
-  int patch_counter[4];
-  for (const auto elem : fpp) {
+                            unsigned int min_points_per_patch) {
+  unsigned int patch_counter[4];
+  for (size_t i = 0; i < 4; i++) {
+    patch_counter[i] = 0;
+  }
+
+  for (const auto& elem : fpp) {
     patch_counter[elem.second - 1] += 1;
   }
 
