@@ -1,26 +1,40 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
+#include <random>
+#include <chrono>
 
 #include "visnav/keypoints.h"
 #include "visnav/of_utils.h"
 #include "visnav/common_types.h"
 
-#include <pangolin/display/image_view.h>
-#include <pangolin/gl/gldraw.h>
-#include <pangolin/image/image.h>
-#include <pangolin/image/image_io.h>
-#include <pangolin/image/typed_image.h>
-#include <pangolin/pangolin.h>
-
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <opencv2/videoio/videoio.hpp>
-#include <opencv2/video/video.hpp>
+
 #include <opencv2/video/tracking.hpp>
+
+#include <pangolin/image/image.h>
+#include <pangolin/image/image_io.h>
+#include <pangolin/image/typed_image.h>
 using namespace visnav;
 using namespace cv;
+const int NUM_FEATURES = 1500;
+const int MATCH_THRESHOLD = 70;
+const double DIST_2_BEST = 1.2;
+
+const std::string img0_path = "../../visnav/test/ex3_test_data/0_0.jpg";
+const std::string img1_path = "../../visnav/test/ex3_test_data/0_1.jpg";
+
+const std::string kd0_path = "../../visnav/test/ex3_test_data/kd0.json";
+const std::string kd1_path = "../../visnav/test/ex3_test_data/kd1.json";
+
+const std::string matches_stereo_path =
+    "../../visnav/test/ex3_test_data/matches_stereo.json";
+const std::string matches_path = "../../visnav/test/ex3_test_data/matches.json";
+
+const std::string calib_path = "../../visnav/test/ex3_test_data/calib.json";
+
 TEST(OpticalFlowTestSuite, enough_points_in_patch) {
   FeaturePatchPair fpp;
   fpp.emplace(std::make_pair(0, 1));
@@ -43,39 +57,25 @@ TEST(OpticalFlowTestSuite, enough_points_in_patch) {
   EXPECT_FALSE(res) << "res: " << res;
 }
 
-/*
- * PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
-                     cv::Point2f point)
- *
- * */
-
 TEST(OpticalFlowTestSuite, find_patchID) {
-  // load_data("../visnav/data/V1_01_easy/mav0/");
+  pangolin::ManagedImage<uint8_t> img0 = pangolin::LoadImage(img0_path);
+  pangolin::ManagedImage<uint8_t> img1 = pangolin::LoadImage(img1_path);
+
   FrameCamId fcidl(0, 0);
 
-  Mat image = imread(
-      "home/ajvi/Documents/WI2122/VisNav/TEAM1/visnav/data/V1_01_easy/mav0/"
-      "cam0/data/1403715273262142976.png");
-  if (image.empty()) {
-    std::cout << "Could not open or find the image" << std::endl;
+  KeypointsData kd0, kd1;
+
+  FeaturePatchPair fpp;
+  TrackedPoints trackedPoints;
+  Corners corners;
+
+  divide_image_into_patches(img0, kd0.corners, NUM_FEATURES, fpp, trackedPoints,
+                            corners, fcidl);
+
+  for (const auto& pair : fpp) {
+    cv::Point2f point;
+    point.x = kd0.corners[pair.first].x();
+    point.y = kd0.corners[pair.first].y();
+    ASSERT_EQ(find_patchID(img0, point), pair.second);
   }
-
-  imshow("Bild", image);
-  waitKey(0);
-  /*
-   KeypointsPositions kd;
-   int num_features = 10;
-   FeaturePatchPair fpp;
-   TrackedPoints trackedPoints;
-   Corners corners;
-
-   divide_image_into_patches(img, kd, num_features, fpp, trackedPoints,
-   corners, fcidl);
-
-     for (const auto& pair : fpp) {
-       cv::Point2f point;
-       point.x = kd[pair.first].x();
-       point.y = kd[pair.first].y();
-       ASSERT_EQ(find_patchID(img, point), pair.second);
-     }*/
 }

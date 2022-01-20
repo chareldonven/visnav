@@ -30,10 +30,8 @@ target_link_libraries(test_ex4 gtest gtest_main Ceres::ceres opengv TBB::tbb)
 add_executable(test_ex5 src/test_ex5.cpp)
 target_link_libraries(test_ex5 gtest gtest_main Ceres::ceres opengv TBB::tbb)
 
-
 add_executable(test_of src/test_of.cpp)
 target_link_libraries(test_of gtest gtest_main Ceres::ceres pangolin TBB::tbb OpenCV opengv)
-
 
 gtest_discover_tests(test_ex0 DISCOVERY_TIMEOUT 120)
 gtest_discover_tests(test_ex1 DISCOVERY_TIMEOUT 120)

@@ -54,24 +54,26 @@ const int NUM_FEATURES = 1500;
 const int MATCH_THRESHOLD = 70;
 const double DIST_2_BEST = 1.2;
 
-const std::string img0_path = "../../test/ex3_test_data/0_0.jpg";
-const std::string img1_path = "../../test/ex3_test_data/0_1.jpg";
+const std::string img0_path = "../../visnav/test/ex3_test_data/0_0.jpg";
+const std::string img1_path = "../../visnav/test/ex3_test_data/0_1.jpg";
 
-const std::string kd0_path = "../../test/ex3_test_data/kd0.json";
-const std::string kd1_path = "../../test/ex3_test_data/kd1.json";
+const std::string kd0_path = "../../visnav/test/ex3_test_data/kd0.json";
+const std::string kd1_path = "../../visnav/test/ex3_test_data/kd1.json";
 
 const std::string matches_stereo_path =
-    "../../test/ex3_test_data/matches_stereo.json";
-const std::string matches_path = "../../test/ex3_test_data/matches.json";
+    "../../visnav/test/ex3_test_data/matches_stereo.json";
+const std::string matches_path = "../../visnav/test/ex3_test_data/matches.json";
 
-const std::string calib_path = "../../test/ex3_test_data/calib.json";
+const std::string calib_path = "../../visnav/test/ex3_test_data/calib.json";
 
-const std::string vocab_path = "../../data/ORBvoc.cereal";
-const std::string bow_res_path = "../../test/ex3_test_data/bow_res.json";
-const std::string bow_res2_path = "../../test/ex3_test_data/bow_res2.json";
+const std::string vocab_path = "../../visnav/data/ORBvoc.cereal";
+const std::string bow_res_path = "../../visnav/test/ex3_test_data/bow_res.json";
+const std::string bow_res2_path =
+    "../../visnav/test/ex3_test_data/bow_res2.json";
 
-const std::string bow_db_path = "../../test/ex3_test_data/bow_db.json";
-const std::string bow_dist_path = "../../test/ex3_test_data/bow_dist.cereal";
+const std::string bow_db_path = "../../visnav/test/ex3_test_data/bow_db.json";
+const std::string bow_dist_path =
+    "../../visnav/test/ex3_test_data/bow_dist.cereal";
 
 TEST(Ex3TestSuite, KeypointAngles) {
   pangolin::ManagedImage<uint8_t> img0 = pangolin::LoadImage(img0_path);

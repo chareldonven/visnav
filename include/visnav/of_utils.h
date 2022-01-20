@@ -49,9 +49,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/serialization.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
-//#include <opencv2/highgui/highgui.hpp>
-//#include <opencv2/videoio/videoio.hpp>
-//#include <opencv2/video/video.hpp>
 #include <opencv2/video/tracking.hpp>
 
 using namespace cv;
@@ -65,12 +62,12 @@ struct OpticalFlowPairs {
   std::vector<FeatureId> inliers;
 };
 
-/// This method saves in kdl.corners the keypoints of the left stereo image.
+/// This method saves in kd.corners the keypoints of the left stereo image.
 /// It also saves in fpp the pair (featureID, patchID)
 /// In trackedPoints saves the keypoints that have been tracked until now. This
 /// means that the featureID and PatchID are for this image.
 ///  At the end of the
-/// method, kdl contains all points from trackedPoints and the new keypoints in
+/// method, kd contains all points from trackedPoints and the new keypoints in
 /// the image. There can be duplicates!
 
 void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
@@ -138,10 +135,10 @@ bool check_duplicates(const Eigen::Vector2d& point0,
   return norm < threshold;
 }
 
-/// This function removes all duplicates rom the traked points. It is called
+/// This function removes all duplicates from the tracked points. It is called
 /// when there are to many points tracked. It searches in the given keypoints
 /// for points which are too close to each other and saves the index of that
-/// poisition. Then it removes points at the found index position from kd bus
+/// position. Then it removes points at the found index position from kd and
 /// also from the tracked_points. Additionally it removes the entry in the fpp.
 /// Finally the featureIds are newly distributed for the tracked points and the
 /// fpp.
@@ -469,7 +466,7 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
   }
 }
 
-/// This Method checks if all patch contains enough points
+/// This method checks if all patch contains enough points
 bool enough_points_in_patch(const FeaturePatchPair& fpp,
                             unsigned int min_points_per_patch) {
   unsigned int patch_counter[4];
@@ -491,7 +488,7 @@ bool enough_points_in_patch(const FeaturePatchPair& fpp,
 }
 
 /// This checks if sterio matching is nessesary.
-/// In the First frame it has to do it in the following enough_points_in_patch
+/// In the first frame it has to do it in the following enough_points_in_patch
 /// is called
 bool should_track_into_stereo(int current_frame, const FeaturePatchPair& fpp,
                               int min_points_per_patch) {
