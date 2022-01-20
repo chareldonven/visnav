@@ -64,7 +64,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/tracks.h>
 
 #include <visnav/serialization.h>
-
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
 using namespace visnav;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -330,9 +331,9 @@ int main(int argc, char** argv) {
         fcid.cam_id = cam_id;
         if (images.find(fcid) != images.end()) {
           pangolin::TypedImage img = pangolin::LoadImage(images[fcid]);
-          img_view[0]->SetImage(img);
+          img_view.at(0)->SetImage(img);
         } else {
-          img_view[0]->Clear();
+          img_view.at(0)->Clear();
         }
       }
 
@@ -868,6 +869,8 @@ void stereo_tracking() {
 
   remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
                        kf_frames);
+
+  // filter_for_duplicates(trackedPoints, kdl.corners, fpp);
   optimize();
 
   current_pose = cameras[fcidl].T_w_c;
@@ -888,8 +891,6 @@ bool next_step() {
   if (should_track_into_stereo(current_frame, fpp, min_points_per_patch) &&
       !opt_running && !opt_finished) {
     stereo_tracking();
-
-    return true;
   }
   if (current_frame + 1 < int(images.size()) / NUM_CAMS)
     track_frame_to_frame();
