@@ -472,14 +472,14 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
                                   : it->second.matches[i].second;
 
           Eigen::Vector2d c = cr.corners[c_idx];
-          double angle = cr.corner_angles[c_idx];
-          pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+          /* double angle = cr.corner_angles[c_idx];
+           pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
 
-          Eigen::Vector2d r(3, 0);
-          Eigen::Rotation2Dd rot(angle);
-          r = rot * r;
+           Eigen::Vector2d r(3, 0);
+           Eigen::Rotation2Dd rot(angle);
+           r = rot * r;
 
-          pangolin::glDrawLine(c, c + r);
+           pangolin::glDrawLine(c, c + r);*/
 
           if (show_ids) {
             pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
@@ -504,14 +504,14 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
                                   : it->second.inliers[i].second;
 
           Eigen::Vector2d c = cr.corners[c_idx];
-          double angle = cr.corner_angles[c_idx];
+          /*double angle = cr.corner_angles[c_idx];
           pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
 
           Eigen::Vector2d r(3, 0);
           Eigen::Rotation2Dd rot(angle);
           r = rot * r;
 
-          pangolin::glDrawLine(c, c + r);
+          pangolin::glDrawLine(c, c + r);*/
 
           if (show_ids) {
             pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
