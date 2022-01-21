@@ -219,7 +219,8 @@ struct OpticalFlowData {
 
   PatchID patchID_current_frame;
 };
-using TrackedPoints = std::vector<OpticalFlowData>;
+// using TrackedPoints = std::vector<OpticalFlowData>;
+using TrackedPoints = std::map<TrackId, FeatureId>;
 using FeaturePatchPair = std::map<FeatureId, PatchID>;
 /// collection of 2d corner points (indexed by FeatureId)
 using KeypointsPositions =
