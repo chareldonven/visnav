@@ -81,6 +81,7 @@ void divide_image_into_patches(const pangolin::ManagedImage<uint8_t>& img_raw,
 
   for (const auto& trackedPoint : trackedPoints) {
     const auto& featureID = trackedPoint.featureID_current_frame;
+
     kd.emplace_back(corners.at(fcidl).corners.at(featureID));
     // This should not be neccessary
     fpp.emplace(featureID, trackedPoint.patchID_current_frame);
@@ -184,8 +185,8 @@ void filter_for_duplicates(TrackedPoints& trackedPoints, KeypointsPositions& kd,
 /// from tracking with optical flow
 
 void find_opticalflow_stereo_matches(
-    FeaturePatchPair& fpp, KeypointsPositions& kdl, KeypointsPositions& kdr,
-    const pangolin::ManagedImage<uint8_t>& img_raw_0,
+    FeaturePatchPair& fpp, const KeypointsPositions& kdl,
+    KeypointsPositions& kdr, const pangolin::ManagedImage<uint8_t>& img_raw_0,
     const pangolin::ManagedImage<uint8_t>& img_raw_1,
     MatchData& stereo_trackedPoints) {
   cv::Mat image_0(img_raw_0.h, img_raw_0.w, CV_8U, img_raw_0.ptr);
@@ -267,11 +268,6 @@ void find_opticalflow_stereo_matches(
         /// TODO: Check whether check_threshhold checks for pixel units
         if (check_threshold(backward_tracking.target_points[i],
                             forward_tracking.source_points[featureID_fti], 3)) {
-          Eigen::Vector2d inlier_keypoint_left;
-          inlier_keypoint_left[0] =
-              forward_tracking.source_points[featureID_fti].x;
-          inlier_keypoint_left[1] =
-              forward_tracking.source_points[featureID_fti].y;
           // This is an inlier point from the left stereo image
           // Update fpp with this
 
@@ -328,7 +324,7 @@ void find_opticalflow_stereo_matches(
 ///  the end should contain the tracked_points into the next_image
 ///
 void find_opticalflow_matches(FeaturePatchPair& fpp,
-                              KeypointsPositions& kd_current,
+                              const KeypointsPositions& kd_current,
                               KeypointsPositions& kd_next,
                               const pangolin::ManagedImage<uint8_t>& img_raw_0,
                               const pangolin::ManagedImage<uint8_t>& img_raw_1,
@@ -342,17 +338,20 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
   // want to track are only the inlier keypoints The FeatureIDs of these points
   // are saved in tracked_points
 
-  std::vector<TrackId> new_trackIDs;
+  std::map<FeatureId, TrackId> trackIDs;
   for (const auto& tracked_point : trackedPoints) {
     const auto& featureID = tracked_point.featureID_current_frame;
     const auto& trackID = tracked_point.trackID;
-    new_trackIDs.emplace_back(trackID);
+
+    trackIDs[featureID] = trackID;
     cv::Point2f point;
-    point.x = kd_current[featureID].x();
-    point.y = kd_current[featureID].y();
+
+    point.x = kd_current.at(featureID).x();
+    point.y = kd_current.at(featureID).y();
     forward_tracking.source_points.emplace_back(point);
   }
   trackedPoints.clear();
+  fpp.clear();
   std::vector<uchar> status;
   std::vector<float> err;
   // forward_tracking.target_points contains the calculated 2d positions in the
@@ -361,8 +360,8 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
                        forward_tracking.target_points, status, err);
 
   for (size_t i = 0; i < forward_tracking.target_points.size(); i++) {
-    // featureID is the index of the keypoint in kd_current
-    FeatureId featureID = i;
+    // new indices
+    FeatureId featureID = trackedPoints[i].featureID_current_frame;
     if (!status[i]) {
       // outliers contains the featureIDs that have not been tracked into the
       // stereo image
@@ -404,7 +403,6 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
 
   // Compare tracking_points to tracking_points_backward!
   // threshold 3 pixels
-  FeaturePatchPair temp_fpp;
 
   for (size_t i = 0; i < backward_tracking.inliers.size(); i++) {
     // backward_tracking.inliers is the smallest set of inliers
@@ -418,26 +416,19 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
         // is the point with the same featureID as featureID_bti and thus should
         // have the same 3d position as it
         /// TODO: Check whether check_threshhold checks for pixel units
-        if (check_threshold(backward_tracking.target_points[i],
-                            forward_tracking.source_points[featureID_fti], 3)) {
-          Eigen::Vector2d inlier_keypoint_current;
-          inlier_keypoint_current[0] =
-              forward_tracking.source_points[featureID_fti].x;
-          inlier_keypoint_current[1] =
-              forward_tracking.source_points[featureID_fti].y;
+        if (check_threshold(backward_tracking.target_points.at(i),
+                            forward_tracking.source_points.at(j), 3)) {
           // This is an inlier point from the left stereo image
           // fpp should contain the next pairs. So the featureID is the index in
           // the backward inliers As for the patchID, we should compute it.
-          const auto& patchID = find_patchID(
-              img_raw_1, forward_tracking.target_points[featureID_fti]);
+          const auto& patchID =
+              find_patchID(img_raw_1, forward_tracking.target_points[j]);
 
-          temp_fpp.emplace(i, patchID);
+          fpp.emplace(i, patchID);
 
           Eigen::Vector2d inlier_keypoint_next;
-          inlier_keypoint_next[0] =
-              forward_tracking.target_points[featureID_fti].x;
-          inlier_keypoint_next[1] =
-              forward_tracking.target_points[featureID_fti].y;
+          inlier_keypoint_next[0] = forward_tracking.target_points[j].x;
+          inlier_keypoint_next[1] = forward_tracking.target_points[j].y;
           // Find the inlier point in the right image and add it to kd_next
           kd_next.emplace_back(inlier_keypoint_next);
           /* Update trackedPoints
@@ -449,26 +440,20 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
            * The trackID should remain the same; How do we now which one?
            * */
           OpticalFlowData new_trackedPoint;
-          new_trackedPoint.trackID = new_trackIDs[featureID_fti];
-          new_trackedPoint.featureID_current_frame = i;
-          new_trackedPoint.patchID_current_frame = find_patchID(
-              img_raw_1, forward_tracking.target_points[featureID_fti]);
+          new_trackedPoint.trackID = trackIDs.at(featureID_fti);
+          new_trackedPoint.featureID_current_frame = kd_next.size() - 1;
+          new_trackedPoint.patchID_current_frame = patchID;
 
           trackedPoints.emplace_back(new_trackedPoint);
         }
       }
     }
   }
-
-  fpp.clear();
-  for (const auto& fpp_pair : temp_fpp) {
-    fpp.emplace(fpp_pair);
-  }
 }
 
 /// This method checks if all patch contains enough points
-bool enough_points_in_patch(const FeaturePatchPair& fpp,
-                            unsigned int min_points_per_patch) {
+bool not_enough_points_in_patch(const FeaturePatchPair& fpp,
+                                unsigned int min_points_per_patch) {
   unsigned int patch_counter[4];
   for (size_t i = 0; i < 4; i++) {
     patch_counter[i] = 0;
@@ -493,7 +478,7 @@ bool enough_points_in_patch(const FeaturePatchPair& fpp,
 bool should_track_into_stereo(int current_frame, const FeaturePatchPair& fpp,
                               int min_points_per_patch) {
   if (current_frame == 0) return true;
-  return enough_points_in_patch(fpp, min_points_per_patch);
+  return not_enough_points_in_patch(fpp, min_points_per_patch);
 }
 
 /// This method is used by stereo tracking
@@ -715,6 +700,8 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
                           Cameras& cameras, Landmarks& landmarks,
                           Landmarks& old_landmarks,
                           std::set<FrameId>& kf_frames) {
+  return;
+
   kf_frames.emplace(fcidl.frame_id);
 
   // TODO SHEET 5: Remove old cameras and observations if the number of
