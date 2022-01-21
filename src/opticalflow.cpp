@@ -140,6 +140,9 @@ ImageProjections image_projections;
 TrackedPoints trackedPoints;
 
 FeaturePatchPair fpp;
+/// Visualisation
+std::vector<FrameCamId> lastFewFrames;
+int sizeOfVisualisation = 5;
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
 ///////////////////////////////////////////////////////////////////////////////
@@ -331,6 +334,11 @@ int main(int argc, char** argv) {
         if (images.find(fcid) != images.end()) {
           pangolin::TypedImage img = pangolin::LoadImage(images[fcid]);
           img_view[0]->SetImage(img);
+          /// add visualisation frames here
+          lastFewFrames.insert(lastFewFrames.begin(), fcid);
+          if (lastFewFrames.size() > (size_t)sizeOfVisualisation) {
+            lastFewFrames.pop_back();
+          }
         } else {
           img_view[0]->Clear();
         }
@@ -351,6 +359,7 @@ int main(int argc, char** argv) {
 
           pangolin::TypedImage img = pangolin::LoadImage(images[fcid]);
           img_view[1]->SetImage(img);
+          // Todo: add here new Frames if right side visualisation is required!
         } else {
           img_view[1]->Clear();
         }
@@ -397,16 +406,24 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
     if (feature_corners.find(fcid) != feature_corners.end()) {
       const KeypointsData& cr = feature_corners.at(fcid);
 
+      /// Draws for all points in frame but for older frames the feature might
+      /// be missing. Therefor we have to match first the points fo their
+      /// FrameId
+
       for (size_t i = 0; i < cr.corners.size(); i++) {
         Eigen::Vector2d c = cr.corners[i];
-        double angle = cr.corner_angles[i];
+
         pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
 
+        /*
+         *
+         * Not used in OF
+        double angle = cr.corner_angles[i];
         Eigen::Vector2d r(3, 0);
         Eigen::Rotation2Dd rot(angle);
         r = rot * r;
 
-        pangolin::glDrawLine(c, c + r);
+        pangolin::glDrawLine(c, c + r);*/
       }
 
       pangolin::GlFont::I()
@@ -823,7 +840,8 @@ void track_frame_to_frame() {
 
   // update image views
   change_display_to_image(fcid_current);
-  change_display_to_image(fcid_next);
+  change_display_to_image(FrameCamId(current_frame, 1));
+  // change_display_to_image(fcid_next);
   current_frame++;
 }
 void stereo_tracking() {

@@ -420,6 +420,7 @@ void find_opticalflow_matches(FeaturePatchPair& fpp,
         /// TODO: Check whether check_threshhold checks for pixel units
         if (check_threshold(backward_tracking.target_points[i],
                             forward_tracking.source_points[featureID_fti], 3)) {
+          /// TODO: Its this used???
           Eigen::Vector2d inlier_keypoint_current;
           inlier_keypoint_current[0] =
               forward_tracking.source_points[featureID_fti].x;
