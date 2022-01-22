@@ -229,6 +229,9 @@ struct StereoTrackedPoints {
   KeypointsPositions right_image;
 };
 
+using PointsOfTrack = std::vector<Eigen::Vector2d>;
+using VisualisationTracks = std::map<TrackId, PointsOfTrack>;
+
 /// list of current candidates and some book keeping for the different stages
 struct CameraCandidates {
   enum Stage {

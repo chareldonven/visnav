@@ -1,4 +1,4 @@
-﻿/**
+/**
 BSD 3-Clause License
 
 Copyright (c) 2018, Vladyslav Usenko and Nikolaus Demmel.
@@ -141,7 +141,7 @@ TrackedPoints trackedPoints;
 
 FeaturePatchPair fpp;
 /// Visualisation
-std::vector<FrameCamId> lastFewFrames;
+VisualisationTracks visualisationTracks;
 int sizeOfVisualisation = 5;
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
@@ -334,11 +334,6 @@ int main(int argc, char** argv) {
         if (images.find(fcid) != images.end()) {
           pangolin::TypedImage img = pangolin::LoadImage(images[fcid]);
           img_view[0]->SetImage(img);
-          /// add visualisation frames here
-          lastFewFrames.insert(lastFewFrames.begin(), fcid);
-          if (lastFewFrames.size() > (size_t)sizeOfVisualisation) {
-            lastFewFrames.pop_back();
-          }
         } else {
           img_view[0]->Clear();
         }
@@ -359,7 +354,6 @@ int main(int argc, char** argv) {
 
           pangolin::TypedImage img = pangolin::LoadImage(images[fcid]);
           img_view[1]->SetImage(img);
-          // Todo: add here new Frames if right side visualisation is required!
         } else {
           img_view[1]->Clear();
         }
@@ -397,7 +391,30 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
 
   float text_row = 20;
 
-  if (show_detected) {
+  if (true) {
+    glLineWidth(1.0);
+    glColor3f(1.0, 0.0, 0.0);  // red
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    for (const auto& track : visualisationTracks) {
+      for (size_t i = 0; i < track.second.size(); i++) {
+        Eigen::Vector2d c = track.second.at(i);
+        if (i == 0) {
+          glColor3f(0.0, 0.0, 1.0);
+          pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+          glColor3f(1.0, 0.0, 0.0);
+        } else
+          pangolin::glDrawCirclePerimeter(c[0], c[1], 2.0);
+      }
+    }
+
+    pangolin::GlFont::I()
+        .Text("Detected %d corners", visualisationTracks.size())
+        .Draw(5, text_row);
+  }
+
+  /*if (show_detected) {
     glLineWidth(1.0);
     glColor3f(1.0, 0.0, 0.0);  // red
     glEnable(GL_BLEND);
@@ -414,16 +431,6 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
         Eigen::Vector2d c = cr.corners[i];
 
         pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
-
-        /*
-         *
-         * Not used in OF
-        double angle = cr.corner_angles[i];
-        Eigen::Vector2d r(3, 0);
-        Eigen::Rotation2Dd rot(angle);
-        r = rot * r;
-
-        pangolin::glDrawLine(c, c + r);*/
       }
 
       pangolin::GlFont::I()
@@ -472,14 +479,6 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
                                   : it->second.matches[i].second;
 
           Eigen::Vector2d c = cr.corners[c_idx];
-          /* double angle = cr.corner_angles[c_idx];
-           pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
-
-           Eigen::Vector2d r(3, 0);
-           Eigen::Rotation2Dd rot(angle);
-           r = rot * r;
-
-           pangolin::glDrawLine(c, c + r);*/
 
           if (show_ids) {
             pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
@@ -504,14 +503,6 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
                                   : it->second.inliers[i].second;
 
           Eigen::Vector2d c = cr.corners[c_idx];
-          /*double angle = cr.corner_angles[c_idx];
-          pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
-
-          Eigen::Vector2d r(3, 0);
-          Eigen::Rotation2Dd rot(angle);
-          r = rot * r;
-
-          pangolin::glDrawLine(c, c + r);*/
 
           if (show_ids) {
             pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
@@ -575,7 +566,7 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
           .Draw(5, text_row);
       text_row += 20;
     }
-  }
+}*/
 
   if (show_epipolar) {
     glLineWidth(1.0);
@@ -815,6 +806,9 @@ void track_frame_to_frame() {
                            img_current, img_next, trackedPoints);
 
   feature_corners[fcid_next] = kd_next;
+
+  updateVisualisationTracks(trackedPoints, sizeOfVisualisation, kd_next.corners,
+                            visualisationTracks);
 
   LandmarkMatchData md;
 

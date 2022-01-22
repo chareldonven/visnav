@@ -772,4 +772,15 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
     landmarks.emplace(landmark);
   }
 }
+void updateVisualisationTracks(const TrackedPoints& trackedPoints, const size_t tracklength, const KeypointsPositions& kd, VisualisationTracks& visualisationTracks){
+    VisualisationTracks newVisualisationTracks;
+    for(const auto trackedPoint: trackedPoints){
+        PointsOfTrack pointsOfTrack = visualisationTracks[trackedPoint.trackID];
+        pointsOfTrack.insert(pointsOfTrack.begin(), kd[trackedPoint.featureID_current_frame]);
+        if(pointsOfTrack.size()>tracklength)
+            pointsOfTrack.pop_back();
+        newVisualisationTracks[trackedPoint.trackID] = pointsOfTrack;
+    }
+    visualisationTracks = newVisualisationTracks;
+}
 }  // namespace visnav
