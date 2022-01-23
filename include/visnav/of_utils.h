@@ -389,6 +389,46 @@ void updateVisualisationTracks(const TrackedPoints& trackedPoints,
   visualisationTracks = newVisualisationTracks;
 }
 
+double points2Angle(const Eigen::Vector2d& p1, const Eigen::Vector2d& p2) {
+  double m = (p2[1] - p1[1]) / (p2[0] - p1[0]);
+  double pi = 3.14159265;
+  double angle = atan(m) * 180.0 / pi + 180.0;
+  return angle;
+}
+
+void angle2rgb(double h, int r, int g, int b) {
+  // double h = angle * 360.0;
+
+  double x = 1 - abs(fmod(h / 60.0, 2.0) - 1);
+
+  if (h < 60) {
+    r = 255;
+    g = (int)(x * 255);
+    b = 0;
+
+  } else if (h < 120) {
+    r = (int)(x * 255);
+    g = 255;
+    b = 0;
+  } else if (h < 180) {
+    r = 0;
+    g = 255;
+    b = (int)(x * 255);
+  } else if (h < 240) {
+    r = 0;
+    g = (int)(x * 255);
+    b = 255;
+  } else if (h < 300) {
+    r = (int)(x * 255);
+    g = 0;
+    b = 255;
+  } else {
+    r = 255;
+    g = 0;
+    b = (int)(255 * x);
+  }
+}
+
 void localize_camera_and_update_trackedPoints(
     const Sophus::SE3d& current_pose,
     const std::shared_ptr<AbstractCamera<double>>& cam,

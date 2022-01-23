@@ -88,7 +88,7 @@ constexpr int NUM_CAMS = 2;
 ///////////////////////////////////////////////////////////////////////////////
 /// Variables
 ///////////////////////////////////////////////////////////////////////////////
-
+constexpr int min_points_per_patch = 10;
 int current_frame = 0;
 Sophus::SE3d current_pose;
 bool take_keyframe = true;
@@ -138,7 +138,9 @@ Landmarks old_landmarks;
 /// cameras, landmarks, and feature_tracks; used for visualization and
 /// determining outliers; indexed by images
 ImageProjections image_projections;
-
+/// Visualisation
+VisualisationTracks visualisationTracks;
+constexpr int sizeOfVisualisation = 5;
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
 ///////////////////////////////////////////////////////////////////////////////
@@ -389,178 +391,238 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
 
   float text_row = 20;
 
-  if (show_detected) {
-    glLineWidth(1.0);
-    glColor3f(1.0, 0.0, 0.0);  // red
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    if (feature_corners.find(fcid) != feature_corners.end()) {
-      const KeypointsData& cr = feature_corners.at(fcid);
-
-      for (size_t i = 0; i < cr.corners.size(); i++) {
-        Eigen::Vector2d c = cr.corners[i];
-        double angle = cr.corner_angles[i];
-        pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
-
-        Eigen::Vector2d r(3, 0);
-        Eigen::Rotation2Dd rot(angle);
-        r = rot * r;
-
-        pangolin::glDrawLine(c, c + r);
-      }
-
-      pangolin::GlFont::I()
-          .Text("Detected %d corners", cr.corners.size())
-          .Draw(5, text_row);
-
-    } else {
-      glLineWidth(1.0);
-
-      pangolin::GlFont::I().Text("Corners not processed").Draw(5, text_row);
-    }
-    text_row += 20;
-  }
-
-  if (show_matches || show_inliers) {
-    glLineWidth(1.0);
-    glColor3f(0.0, 0.0, 1.0);  // blue
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    auto o_frame_id =
-        static_cast<FrameId>(view_id == 0 ? show_frame2 : show_frame1);
-    auto o_cam_id = static_cast<CamId>(view_id == 0 ? show_cam2 : show_cam1);
-
-    FrameCamId o_fcid(o_frame_id, o_cam_id);
-
-    int idx = -1;
-
-    auto it = feature_matches.find(std::make_pair(fcid, o_fcid));
-
-    if (it != feature_matches.end()) {
-      idx = 0;
-    } else {
-      it = feature_matches.find(std::make_pair(o_fcid, fcid));
-      if (it != feature_matches.end()) {
-        idx = 1;
-      }
-    }
-
-    if (idx >= 0 && show_matches) {
-      if (feature_corners.find(fcid) != feature_corners.end()) {
-        const KeypointsData& cr = feature_corners.at(fcid);
-
-        for (size_t i = 0; i < it->second.matches.size(); i++) {
-          size_t c_idx = idx == 0 ? it->second.matches[i].first
-                                  : it->second.matches[i].second;
-
-          Eigen::Vector2d c = cr.corners[c_idx];
-          double angle = cr.corner_angles[c_idx];
-          pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
-
-          Eigen::Vector2d r(3, 0);
-          Eigen::Rotation2Dd rot(angle);
-          r = rot * r;
-
-          pangolin::glDrawLine(c, c + r);
-
-          if (show_ids) {
-            pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
-          }
-        }
-
-        pangolin::GlFont::I()
-            .Text("Detected %d matches", it->second.matches.size())
-            .Draw(5, text_row);
-        text_row += 20;
-      }
-    }
-
-    glColor3f(0.0, 1.0, 0.0);  // green
-
-    if (idx >= 0 && show_inliers) {
-      if (feature_corners.find(fcid) != feature_corners.end()) {
-        const KeypointsData& cr = feature_corners.at(fcid);
-
-        for (size_t i = 0; i < it->second.inliers.size(); i++) {
-          size_t c_idx = idx == 0 ? it->second.inliers[i].first
-                                  : it->second.inliers[i].second;
-
-          Eigen::Vector2d c = cr.corners[c_idx];
-          double angle = cr.corner_angles[c_idx];
-          pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
-
-          Eigen::Vector2d r(3, 0);
-          Eigen::Rotation2Dd rot(angle);
-          r = rot * r;
-
-          pangolin::glDrawLine(c, c + r);
-
-          if (show_ids) {
-            pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
-          }
-        }
-
-        pangolin::GlFont::I()
-            .Text("Detected %d inliers", it->second.inliers.size())
-            .Draw(5, text_row);
-        text_row += 20;
-      }
-    }
-  }
-
-  if (show_reprojections) {
-    if (image_projections.count(fcid) > 0) {
+  if (cam_id == 0) {
+    // point tail
+    if (false) {
       glLineWidth(1.0);
       glColor3f(1.0, 0.0, 0.0);  // red
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-      const size_t num_points = image_projections.at(fcid).obs.size();
-      double error_sum = 0;
-      size_t num_outliers = 0;
-
-      // count up and draw all inlier projections
-      for (const auto& lm_proj : image_projections.at(fcid).obs) {
-        error_sum += lm_proj->reprojection_error;
-
-        if (lm_proj->outlier_flags != OutlierNone) {
-          // outlier point
-          glColor3f(1.0, 0.0, 0.0);  // red
-          ++num_outliers;
-        } else if (lm_proj->reprojection_error >
-                   reprojection_error_huber_pixel) {
-          // close to outlier point
-          glColor3f(1.0, 0.5, 0.0);  // orange
-        } else {
-          // clear inlier point
-          glColor3f(1.0, 1.0, 0.0);  // yellow
+      for (const auto& track : visualisationTracks) {
+        for (size_t i = 0; i < track.second.size(); i++) {
+          Eigen::Vector2d c = track.second.at(i);
+          if (i == 0) {
+            glColor3f(0.0, 0.0, 1.0);
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+            glColor3f(1.0, 0.0, 0.0);
+          } else
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 2.0);
         }
-        pangolin::glDrawCirclePerimeter(lm_proj->point_reprojected, 3.0);
-        pangolin::glDrawLine(lm_proj->point_measured,
-                             lm_proj->point_reprojected);
       }
 
-      // only draw outlier projections
-      if (show_outlier_observations) {
+      glLineWidth(1.0);
+      pangolin::GlFont::I()
+          .Text("Detected %d corners", visualisationTracks.size())
+          .Draw(5, text_row);
+    }
+    if (true) {
+      glLineWidth(1.0);
+      glColor3f(1.0, 0.0, 0.0);  // red
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+      for (const auto& track : visualisationTracks) {
+        if (track.second.size() > 1) {
+          glColor3f(0.0, 0.0, 1.0);
+          pangolin::glDrawCirclePerimeter(track.second.at(0)[0],
+                                          track.second.at(0)[1], 1.0);
+          glColor3f(1.0, 0.0, 0.0);
+          for (size_t i = 1; i < track.second.size(); i++) {
+            Eigen::Vector2d c1 = track.second.at(i - 1);
+            Eigen::Vector2d c2 = track.second.at(i);
+
+            // angle in degrees
+            double angle = points2Angle(c1, c2);
+            int r, g, b;
+
+            angle2rgb(angle, r, b, g);
+            glColor3f(r / 255.0, g / 255.0, b / 255.0);
+            glLineWidth(2.0);
+            pangolin::glDrawLine(c1, c2);
+          }
+        }
+      }
+      glLineWidth(1.0);
+      pangolin::GlFont::I()
+          .Text("Detected %d corners", visualisationTracks.size())
+          .Draw(5, text_row);
+    }
+  }
+
+  /*
+    if (show_detected) {
+      glLineWidth(1.0);
+      glColor3f(1.0, 0.0, 0.0);  // red
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+      if (feature_corners.find(fcid) != feature_corners.end()) {
+        const KeypointsData& cr = feature_corners.at(fcid);
+
+        for (size_t i = 0; i < cr.corners.size(); i++) {
+          Eigen::Vector2d c = cr.corners[i];
+          double angle = cr.corner_angles[i];
+          pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+
+          Eigen::Vector2d r(3, 0);
+          Eigen::Rotation2Dd rot(angle);
+          r = rot * r;
+
+          pangolin::glDrawLine(c, c + r);
+        }
+
+        pangolin::GlFont::I()
+            .Text("Detected %d corners", cr.corners.size())
+            .Draw(5, text_row);
+
+      } else {
+        glLineWidth(1.0);
+
+        pangolin::GlFont::I().Text("Corners not processed").Draw(5, text_row);
+      }
+      text_row += 20;
+    }
+
+    if (show_matches || show_inliers) {
+      glLineWidth(1.0);
+      glColor3f(0.0, 0.0, 1.0);  // blue
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+      auto o_frame_id =
+          static_cast<FrameId>(view_id == 0 ? show_frame2 : show_frame1);
+      auto o_cam_id = static_cast<CamId>(view_id == 0 ? show_cam2 : show_cam1);
+
+      FrameCamId o_fcid(o_frame_id, o_cam_id);
+
+      int idx = -1;
+
+      auto it = feature_matches.find(std::make_pair(fcid, o_fcid));
+
+      if (it != feature_matches.end()) {
+        idx = 0;
+      } else {
+        it = feature_matches.find(std::make_pair(o_fcid, fcid));
+        if (it != feature_matches.end()) {
+          idx = 1;
+        }
+      }
+
+      if (idx >= 0 && show_matches) {
+        if (feature_corners.find(fcid) != feature_corners.end()) {
+          const KeypointsData& cr = feature_corners.at(fcid);
+
+          for (size_t i = 0; i < it->second.matches.size(); i++) {
+            size_t c_idx = idx == 0 ? it->second.matches[i].first
+                                    : it->second.matches[i].second;
+
+            Eigen::Vector2d c = cr.corners[c_idx];
+            double angle = cr.corner_angles[c_idx];
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+
+            Eigen::Vector2d r(3, 0);
+            Eigen::Rotation2Dd rot(angle);
+            r = rot * r;
+
+            pangolin::glDrawLine(c, c + r);
+
+            if (show_ids) {
+              pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
+            }
+          }
+
+          pangolin::GlFont::I()
+              .Text("Detected %d matches", it->second.matches.size())
+              .Draw(5, text_row);
+          text_row += 20;
+        }
+      }
+
+      glColor3f(0.0, 1.0, 0.0);  // green
+
+      if (idx >= 0 && show_inliers) {
+        if (feature_corners.find(fcid) != feature_corners.end()) {
+          const KeypointsData& cr = feature_corners.at(fcid);
+
+          for (size_t i = 0; i < it->second.inliers.size(); i++) {
+            size_t c_idx = idx == 0 ? it->second.inliers[i].first
+                                    : it->second.inliers[i].second;
+
+            Eigen::Vector2d c = cr.corners[c_idx];
+            double angle = cr.corner_angles[c_idx];
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+
+            Eigen::Vector2d r(3, 0);
+            Eigen::Rotation2Dd rot(angle);
+            r = rot * r;
+
+            pangolin::glDrawLine(c, c + r);
+
+            if (show_ids) {
+              pangolin::GlFont::I().Text("%d", i).Draw(c[0], c[1]);
+            }
+          }
+
+          pangolin::GlFont::I()
+              .Text("Detected %d inliers", it->second.inliers.size())
+              .Draw(5, text_row);
+          text_row += 20;
+        }
+      }
+    }
+
+    if (show_reprojections) {
+      if (image_projections.count(fcid) > 0) {
+        glLineWidth(1.0);
         glColor3f(1.0, 0.0, 0.0);  // red
-        for (const auto& lm_proj : image_projections.at(fcid).outlier_obs) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        const size_t num_points = image_projections.at(fcid).obs.size();
+        double error_sum = 0;
+        size_t num_outliers = 0;
+
+        // count up and draw all inlier projections
+        for (const auto& lm_proj : image_projections.at(fcid).obs) {
+          error_sum += lm_proj->reprojection_error;
+
+          if (lm_proj->outlier_flags != OutlierNone) {
+            // outlier point
+            glColor3f(1.0, 0.0, 0.0);  // red
+            ++num_outliers;
+          } else if (lm_proj->reprojection_error >
+                     reprojection_error_huber_pixel) {
+            // close to outlier point
+            glColor3f(1.0, 0.5, 0.0);  // orange
+          } else {
+            // clear inlier point
+            glColor3f(1.0, 1.0, 0.0);  // yellow
+          }
           pangolin::glDrawCirclePerimeter(lm_proj->point_reprojected, 3.0);
           pangolin::glDrawLine(lm_proj->point_measured,
                                lm_proj->point_reprojected);
         }
+
+        // only draw outlier projections
+        if (show_outlier_observations) {
+          glColor3f(1.0, 0.0, 0.0);  // red
+          for (const auto& lm_proj : image_projections.at(fcid).outlier_obs) {
+            pangolin::glDrawCirclePerimeter(lm_proj->point_reprojected, 3.0);
+            pangolin::glDrawLine(lm_proj->point_measured,
+                                 lm_proj->point_reprojected);
+          }
+        }
+
+        glColor3f(1.0, 0.0, 0.0);  // red
+        pangolin::GlFont::I()
+            .Text("Average repr. error (%u points, %u new outliers): %.2f",
+                  num_points, num_outliers, error_sum / num_points)
+            .Draw(5, text_row);
+        text_row += 20;
       }
-
-      glColor3f(1.0, 0.0, 0.0);  // red
-      pangolin::GlFont::I()
-          .Text("Average repr. error (%u points, %u new outliers): %.2f",
-                num_points, num_outliers, error_sum / num_points)
-          .Draw(5, text_row);
-      text_row += 20;
     }
-  }
-
+  */
   if (show_epipolar) {
     glLineWidth(1.0);
     glColor3f(0.0, 1.0, 1.0);  // bright teal
@@ -879,10 +941,14 @@ void frame_to_frame_tracking() {
                   reprojection_error_pnp_inlier_threshold_pixel, md);
   std::cout << "Found " << md.inliers.size() << " INLIER matches." << std::endl;
   current_pose = md.T_w_c;
+
+  updateVisualisationTracks(trackedPoints, sizeOfVisualisation, kd_next.corners,
+                            visualisationTracks);
   /// Check if there are enough keypoints in all regions:
 
-  const auto& do_stereo_tracking = should_track_into_stereo(
-      current_frame, md.inliers, kd_next.corners, img_next, 10);
+  const auto& do_stereo_tracking =
+      should_track_into_stereo(current_frame, md.inliers, kd_next.corners,
+                               img_next, min_points_per_patch);
   if (do_stereo_tracking && !opt_running && !opt_finished) {
     take_keyframe = true;
   }
