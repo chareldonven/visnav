@@ -788,7 +788,7 @@ void track_frame_to_frame() {
   std::cout << "Projected " << projected_track_ids.size() << " points."
             << std::endl;
 
-  const KeypointsData& kd_current = feature_corners.at(fcid_current);
+  KeypointsData& kd_current = feature_corners.at(fcid_current);
   int wrongPoints = 0;
   for (auto i = 0; i < trackedPoints.size(); i++) {
     if (trackedPoints[i].featureID_current_frame >= kd_current.corners.size()) {
@@ -807,6 +807,8 @@ void track_frame_to_frame() {
   find_opticalflow_matches(fpp, kd_current.corners, kd_next.corners,
                            img_current, img_next, trackedPoints);
 
+  computeAngles(img_current, kd_current, rotate_features);
+  computeAngles(img_next, kd_next, rotate_features);
   feature_corners[fcid_next] = kd_next;
   // std::this_thread::sleep_for(std::chrono::milliseconds{100});
 
@@ -817,6 +819,8 @@ void track_frame_to_frame() {
                             trackedPoint.trackID);
   }
   std::cout << "Found " << md.matches.size() << " matches." << std::endl;
+
+  /// Not kd.current but next?
 
   localize_camera(current_pose, calib_cam.intrinsics[0], kd_current, landmarks,
                   reprojection_error_pnp_inlier_threshold_pixel, md);
@@ -866,7 +870,8 @@ void stereo_tracking() {
                                   md_stereo);
   std::cout << "KF Found " << md_stereo.inliers.size() << " stereo-matches."
             << std::endl;
-
+  computeAngles(imgl, kdl, rotate_features);
+  computeAngles(imgr, kdr, rotate_features);
   feature_corners[fcidl] = kdl;
   feature_corners[fcidr] = kdr;
   feature_matches[std::make_pair(fcidl, fcidr)] = md_stereo;
