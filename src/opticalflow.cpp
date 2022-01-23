@@ -432,6 +432,13 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
           for (size_t i = 1; i < track.second.size(); i++) {
             Eigen::Vector2d c1 = track.second.at(i - 1);
             Eigen::Vector2d c2 = track.second.at(i);
+
+            // angle in degrees
+            double angle = points2Angle(c1, c2);
+            int r, g, b;
+
+            angle2rgb(angle, r, b, g);
+            glColor3f(r / 255.0, g / 255.0, b / 255.0);
             glLineWidth(2.0);
             pangolin::glDrawLine(c1, c2);
           }

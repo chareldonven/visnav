@@ -772,15 +772,58 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
     landmarks.emplace(landmark);
   }
 }
-void updateVisualisationTracks(const TrackedPoints& trackedPoints, const size_t tracklength, const KeypointsPositions& kd, VisualisationTracks& visualisationTracks){
-    VisualisationTracks newVisualisationTracks;
-    for(const auto trackedPoint: trackedPoints){
-        PointsOfTrack pointsOfTrack = visualisationTracks[trackedPoint.trackID];
-        pointsOfTrack.insert(pointsOfTrack.begin(), kd[trackedPoint.featureID_current_frame]);
-        if(pointsOfTrack.size()>tracklength)
-            pointsOfTrack.pop_back();
-        newVisualisationTracks[trackedPoint.trackID] = pointsOfTrack;
-    }
-    visualisationTracks = newVisualisationTracks;
+void updateVisualisationTracks(const TrackedPoints& trackedPoints,
+                               const size_t tracklength,
+                               const KeypointsPositions& kd,
+                               VisualisationTracks& visualisationTracks) {
+  VisualisationTracks newVisualisationTracks;
+  for (const auto trackedPoint : trackedPoints) {
+    PointsOfTrack pointsOfTrack = visualisationTracks[trackedPoint.trackID];
+    pointsOfTrack.insert(pointsOfTrack.begin(),
+                         kd[trackedPoint.featureID_current_frame]);
+    if (pointsOfTrack.size() > tracklength) pointsOfTrack.pop_back();
+    newVisualisationTracks[trackedPoint.trackID] = pointsOfTrack;
+  }
+  visualisationTracks = newVisualisationTracks;
+}
+
+double points2Angle(Eigen::Vector2d p1, Eigen::Vector2d p2) {
+  double m = (p2[1] - p1[1]) / (p2[0] - p1[0]);
+  double pi = 3.14159265;
+  double angle = atan(m) * 180.0 / pi + 180.0;
+  return angle;
+}
+
+void angle2rgb(double h, int& r, int& g, int& b) {
+  // double h = angle * 360.0;
+
+  double x = 1 - abs(fmod(h / 60.0, 2.0) - 1);
+
+  if (h < 60) {
+    r = 255;
+    g = (int)(x * 255);
+    b = 0;
+
+  } else if (h < 120) {
+    r = (int)(x * 255);
+    g = 255;
+    b = 0;
+  } else if (h < 180) {
+    r = 0;
+    g = 255;
+    b = (int)(x * 255);
+  } else if (h < 240) {
+    r = 0;
+    g = (int)(x * 255);
+    b = 255;
+  } else if (h < 300) {
+    r = (int)(x * 255);
+    g = 0;
+    b = 255;
+  } else {
+    r = 255;
+    g = 0;
+    b = (int)(255 * x);
+  }
 }
 }  // namespace visnav
