@@ -183,13 +183,6 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
   return norm < threshold;
 }
 
-bool check_threshold_eigen(const Eigen::Vector2d& point0,
-                           const Eigen::Vector2d& point1,
-                           const double threshold) {
-  double norm = (point0 - point1).norm();
-  return norm < threshold;
-}
-
 void match_stereo_with_opticalflow(
     const KeypointsPositions& kdl, KeypointsPositions& kdr,
     const pangolin::ManagedImage<uint8_t>& img_raw_l,
