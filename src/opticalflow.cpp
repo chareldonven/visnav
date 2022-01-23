@@ -788,7 +788,16 @@ void track_frame_to_frame() {
   std::cout << "Projected " << projected_track_ids.size() << " points."
             << std::endl;
 
-  KeypointsData kd_current = feature_corners.at(fcid_current);
+  const KeypointsData& kd_current = feature_corners.at(fcid_current);
+  int wrongPoints = 0;
+  for (auto i = 0; i < trackedPoints.size(); i++) {
+    if (trackedPoints[i].featureID_current_frame >= kd_current.corners.size()) {
+      std::cerr << "NICHT sizeeeeeeeeeeeeeeeeee!" << std::endl;
+      wrongPoints++;
+    }
+  }
+  std::cout << wrongPoints << " / " << trackedPoints.size() << " wrong"
+            << std::endl;
   KeypointsData kd_next;
   pangolin::ManagedImage<uint8_t> img_current =
       pangolin::LoadImage(images[fcid_current]);
@@ -799,6 +808,7 @@ void track_frame_to_frame() {
                            img_current, img_next, trackedPoints);
 
   feature_corners[fcid_next] = kd_next;
+  // std::this_thread::sleep_for(std::chrono::milliseconds{100});
 
   LandmarkMatchData md;
 
@@ -886,10 +896,18 @@ void stereo_tracking() {
 // until it returns false for automatic execution.
 bool next_step() {
   if (current_frame >= int(images.size()) / NUM_CAMS) return false;
-
+  std::cout << " CURRENT FRAME: " << current_frame << std::endl;
   // Check how to use opt_running and opt_finished
-  if (should_track_into_stereo(current_frame, fpp, min_points_per_patch) &&
-      !opt_running && !opt_finished) {
+
+  auto should_track_stereo =
+      should_track_into_stereo(current_frame, fpp, min_points_per_patch);
+  std::cout << "Should track info stereo? " << should_track_stereo << std::endl;
+
+  while (should_track_stereo and opt_running) {
+    std::this_thread::sleep_for(std::chrono::milliseconds{3});
+  }
+
+  if (should_track_stereo && !opt_running && !opt_finished) {
     stereo_tracking();
   }
   if (current_frame + 1 < int(images.size()) / NUM_CAMS)

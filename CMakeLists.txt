@@ -119,6 +119,7 @@ add_executable(odometry src/odometry.cpp)
 target_link_libraries(odometry Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
 add_executable(opticalflow src/opticalflow.cpp)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -g")
 target_link_libraries(opticalflow Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
 add_executable(test_openCV_lk src/test_opencv_lk.cpp)

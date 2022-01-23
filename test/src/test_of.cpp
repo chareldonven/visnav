@@ -1,3 +1,5 @@
+
+/*
 #include <gtest/gtest.h>
 
 #include <fstream>
@@ -35,7 +37,7 @@ const std::string matches_path = "../../visnav/test/ex3_test_data/matches.json";
 
 const std::string calib_path = "../../visnav/test/ex3_test_data/calib.json";
 
-TEST(OpticalFlowTestSuite, enough_points_in_patch) {
+TEST(OpticalFlowTestSuite, not_enough_points_in_patch) {
   FeaturePatchPair fpp;
   fpp.emplace(std::make_pair(0, 1));
   fpp.emplace(std::make_pair(1, 1));
@@ -50,7 +52,7 @@ TEST(OpticalFlowTestSuite, enough_points_in_patch) {
 
   fpp.emplace(std::make_pair(6, 3));
 
-  auto res = enough_points_in_patch(fpp, 1);
+  auto res = not_enough_points_in_patch(fpp, 1);
 
   // ASSERT_EQ();
 
@@ -245,3 +247,4 @@ TEST(OpticalFlowTestSuite, test_all) {
   Matches feature_matches;
   Cameras cameras;
 }
+*/

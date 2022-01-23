@@ -64,7 +64,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <visnav/serialization.h>
 
-#include <visnav/opticalflow_utils.h>
 using namespace visnav;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -111,8 +110,7 @@ tbb::concurrent_unordered_map<FrameCamId, std::string> images;
 
 /// timestamps for all stereo pairs
 std::vector<Timestamp> timestamps;
-/// FeatureID and TrackID of keypoints tracked in the current frame
-TrackedPoints trackedPoints;
+
 /// detected feature locations and descriptors
 Corners feature_corners;
 
@@ -774,244 +772,147 @@ void load_data(const std::string& dataset_path, const std::string& calib_path) {
 ///////////////////////////////////////////////////////////////////////////////
 /// Here the algorithmically interesting implementation begins
 ///////////////////////////////////////////////////////////////////////////////
-void stereo_tracking() {
-  const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
-  take_keyframe = false;
 
-  FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
-
-  std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
-      projected_points;
-  std::vector<TrackId> projected_track_ids;
-
-  project_landmarks(current_pose, calib_cam.intrinsics[0], landmarks,
-                    cam_z_threshold, projected_points, projected_track_ids);
-
-  std::cout << "KF Projected " << projected_track_ids.size() << " points."
-            << std::endl;
-
-  MatchData md_stereo;
-  KeypointsData kdl, kdr;
-
-  pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
-  pangolin::ManagedImage<uint8_t> imgr = pangolin::LoadImage(images[fcidr]);
-
-  /// Detect keypoints; md_stereo.matches has all matches and md_stereo.inliers
-  /// has only inlier matches
-  /// We have already tracked_keypoints in trackedPoints; We need to find new
-  /// keypoints in the left frame and track them in the right frame
-
-  // Keypoints not yet saved in corners!
-  /*
-  if (current_frame > 0) {
-    get_tracked_keypoints(trackedPoints, feature_corners.at(fcidl).corners,
-                          kdl.corners);
-  }
-  */
-
-  detect_keypoints(imgl, kdl.corners, num_features_per_image);
-  computeAngles(imgl, kdl, rotate_features);
-  // computeDescriptors(imgl, kdl);
-  /*
-  detect_keypoints(imgr, kdr.corners, num_features_per_image);
-  computeAngles(imgr, kdr, rotate_features);
-  computeDescriptors(imgr, kdr);
-*/
-  /*
-  detectKeypointsAndDescriptors(imgl, kdl, num_features_per_image,
-                                rotate_features);
-  detectKeypointsAndDescriptors(imgr, kdr, num_features_per_image,
-                                rotate_features);
-  */
-  md_stereo.T_i_j = T_0_1;
-
-  Eigen::Matrix3d E;
-  computeEssential(T_0_1, E);
-
-  /// Track from left to right frame
-  /// kdl.corners should not change! kdr.corners contains new positions!
-  /// md_stereo.matches contains forward and backward tracking inliers!
-
-  match_stereo_with_opticalflow(kdl.corners, kdr.corners, imgl, imgr,
-                                md_stereo.matches);
-
-  computeAngles(imgr, kdr, rotate_features);
-  // computeDescriptors(imgr, kdr);
-  /*
-  matchDescriptors(kdl.corner_descriptors, kdr.corner_descriptors,
-                   md_stereo.matches, feature_match_max_dist,
-                   feature_match_test_next_best);
-    */
-  findInliersEssential(kdl, kdr, calib_cam.intrinsics[0],
-                       calib_cam.intrinsics[1], E, 1e-3, md_stereo);
-
-  std::cout << "KF Found " << md_stereo.inliers.size() << " stereo-matches."
-            << std::endl;
-
-  feature_corners[fcidl] = kdl;
-  feature_corners[fcidr] = kdr;
-  feature_matches[std::make_pair(fcidl, fcidr)] = md_stereo;
-
-  LandmarkMatchData md;
-  /*
-    find_matches_landmarks(kdl, landmarks, feature_corners, projected_points,
-                           projected_track_ids, match_max_dist_2d,
-                           feature_match_max_dist, feature_match_test_next_best,
-                           md);
-  */
-  find_md(kdl.corners, projected_points, projected_track_ids, md,
-          md_stereo.matches);
-  std::cout << "KF Found " << md.matches.size() << " matches." << std::endl;
-  md.T_w_c = current_pose;
-  /*
-  localize_camera(current_pose, calib_cam.intrinsics[0], kdl, landmarks,
-                  reprojection_error_pnp_inlier_threshold_pixel, md);
-
-  current_pose = md.T_w_c;
-  */
-
-  cameras[fcidl].T_w_c = current_pose;
-  cameras[fcidr].T_w_c = current_pose * T_0_1;
-
-  add_new_landmarks_and_update_trackedPoints(fcidl, fcidr, kdl, kdr, calib_cam,
-                                             md_stereo, md, landmarks,
-                                             next_landmark_id, trackedPoints);
-
-  /*remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
-                       kf_frames);*/
-  optimize();
-
-  current_pose = cameras[fcidl].T_w_c;
-
-  // update image views
-  change_display_to_image(fcidl);
-  change_display_to_image(fcidr);
-
-  compute_projections();
-
-  // current_frame++;
-}
-void frame_to_frame_tracking() {
-  if (current_frame + 1 >= int(images.size()) / NUM_CAMS) return;
-  FrameCamId fcid_current(current_frame, 0), fcid_next(current_frame + 1, 0);
-
-  std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
-      projected_points;
-  std::vector<TrackId> projected_track_ids;
-
-  project_landmarks(current_pose, calib_cam.intrinsics[0], landmarks,
-                    cam_z_threshold, projected_points, projected_track_ids);
-
-  std::cout << "Projected " << projected_track_ids.size() << " points."
-            << std::endl;
-
-  KeypointsData kd_current, kd_next;
-
-  pangolin::ManagedImage<uint8_t> img_current =
-      pangolin::LoadImage(images[fcid_current]);
-  pangolin::ManagedImage<uint8_t> img_next =
-      pangolin::LoadImage(images[fcid_next]);
-
-  for (const auto& trackedPoint : trackedPoints) {
-    const auto& featureID = trackedPoint.second;
-    const auto& position =
-        feature_corners.at(fcid_current).corners.at(featureID);
-    kd_current.corners.emplace_back(position);
-  }
-
-  /*
-  detectKeypointsAndDescriptors(img_current, kd_current, num_features_per_image,
-                                rotate_features);
-  */
-
-  // Find keypoints in next_image
-  match_with_opticalflow(kd_current.corners, kd_next.corners, img_current,
-                         img_next, trackedPoints);
-  computeAngles(img_next, kd_next, rotate_features);
-
-  feature_corners[fcid_next] = kd_next;
-
-  LandmarkMatchData md;
-
-  for (const auto& trackedPoint : trackedPoints) {
-    md.matches.emplace_back(trackedPoint.second, trackedPoint.first);
-  }
-  /*
-  find_matches_landmarks(kd_current, landmarks, feature_corners,
-                         projected_points, projected_track_ids,
-                         match_max_dist_2d, feature_match_max_dist,
-                         feature_match_test_next_best, md);
-*/
-
-  std::cout << "Found " << md.matches.size() << " matches." << std::endl;
-
-  localize_camera(current_pose, calib_cam.intrinsics[0], kd_next, landmarks,
-                  reprojection_error_pnp_inlier_threshold_pixel, md);
-
-  current_pose = md.T_w_c;
-  std::cout << "TRACKED POINTS: " << trackedPoints.size() << std::endl;
-  /// Change from new_kf_min_inliers to should_track_into_stereo()
-  // Save FeatureIDs and patchID of the inliers in a fpp
-  FeaturePatchPair fpp;
-  for (const auto& tracked_point : trackedPoints) {
-    const auto& featureID = tracked_point.second;
-    cv::Point2f point;
-    const auto& eigen_point = kd_current.corners.at(featureID);
-    point.x = eigen_point.x();
-    point.y = eigen_point.y();
-    const auto& patchID = find_patchID(img_current, point);
-    fpp.emplace(std::make_pair(featureID, patchID));
-  }
-  std::cout << "TRACK INTO STEREO: "
-            << should_track_into_stereo(current_frame + 1, fpp, 10)
-            << " running: " << !opt_running << " , finished: " << !opt_finished
-            << std::endl;
-
-  auto do_stereo_tracking =
-      should_track_into_stereo(current_frame + 1, fpp, 10);
-  while (do_stereo_tracking and opt_running) {
-    std::this_thread::sleep_for(std::chrono::milliseconds{3});
-  }
-
-  if (do_stereo_tracking && !opt_running && !opt_finished) {
-    take_keyframe = true;
-  }
-
-  /*
-    if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
-        !opt_finished) {
-      take_keyframe = true;
-    }*/
-
-  if (!opt_running && opt_finished) {
-    opt_thread->join();
-    landmarks = landmarks_opt;
-    cameras = cameras_opt;
-    calib_cam = calib_cam_opt;
-
-    opt_finished = false;
-  }
-
-  // update image views
-  change_display_to_image(fcid_current);
-  change_display_to_image(fcid_next);
-
-  current_frame++;
-}
 // Execute next step in the overall odometry pipeline. Call this repeatedly
 // until it returns false for automatic execution.
 bool next_step() {
   if (current_frame >= int(images.size()) / NUM_CAMS) return false;
-  std::cout << "Current_frame: " << current_frame
-            << " , feature_corners: " << feature_corners.size() << std::endl;
+
+  const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
+
   if (take_keyframe) {
-    std::cout << "Stereo tracking!" << std::endl;
-    stereo_tracking();
-    frame_to_frame_tracking();
+    take_keyframe = false;
+
+    FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
+
+    std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
+        projected_points;
+    std::vector<TrackId> projected_track_ids;
+
+    project_landmarks(current_pose, calib_cam.intrinsics[0], landmarks,
+                      cam_z_threshold, projected_points, projected_track_ids);
+
+    std::cout << "KF Projected " << projected_track_ids.size() << " points."
+              << std::endl;
+
+    MatchData md_stereo;
+    KeypointsData kdl, kdr;
+
+    pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
+    pangolin::ManagedImage<uint8_t> imgr = pangolin::LoadImage(images[fcidr]);
+
+    detectKeypointsAndDescriptors(imgl, kdl, num_features_per_image,
+                                  rotate_features);
+    detectKeypointsAndDescriptors(imgr, kdr, num_features_per_image,
+                                  rotate_features);
+
+    md_stereo.T_i_j = T_0_1;
+
+    Eigen::Matrix3d E;
+    computeEssential(T_0_1, E);
+
+    matchDescriptors(kdl.corner_descriptors, kdr.corner_descriptors,
+                     md_stereo.matches, feature_match_max_dist,
+                     feature_match_test_next_best);
+
+    findInliersEssential(kdl, kdr, calib_cam.intrinsics[0],
+                         calib_cam.intrinsics[1], E, 1e-3, md_stereo);
+
+    std::cout << "KF Found " << md_stereo.inliers.size() << " stereo-matches."
+              << std::endl;
+
+    feature_corners[fcidl] = kdl;
+    feature_corners[fcidr] = kdr;
+    feature_matches[std::make_pair(fcidl, fcidr)] = md_stereo;
+
+    LandmarkMatchData md;
+
+    find_matches_landmarks(kdl, landmarks, feature_corners, projected_points,
+                           projected_track_ids, match_max_dist_2d,
+                           feature_match_max_dist, feature_match_test_next_best,
+                           md);
+
+    std::cout << "KF Found " << md.matches.size() << " matches." << std::endl;
+
+    localize_camera(current_pose, calib_cam.intrinsics[0], kdl, landmarks,
+                    reprojection_error_pnp_inlier_threshold_pixel, md);
+
+    current_pose = md.T_w_c;
+
+    cameras[fcidl].T_w_c = current_pose;
+    cameras[fcidr].T_w_c = current_pose * T_0_1;
+
+    add_new_landmarks(fcidl, fcidr, kdl, kdr, calib_cam, md_stereo, md,
+                      landmarks, next_landmark_id);
+
+    remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
+                         kf_frames);
+    optimize();
+
+    current_pose = cameras[fcidl].T_w_c;
+
+    // update image views
+    change_display_to_image(fcidl);
+    change_display_to_image(fcidr);
+
+    compute_projections();
+
+    current_frame++;
     return true;
   } else {
-    std::cout << "Frame to frame tracking!" << std::endl;
-    frame_to_frame_tracking();
+    FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
+
+    std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
+        projected_points;
+    std::vector<TrackId> projected_track_ids;
+
+    project_landmarks(current_pose, calib_cam.intrinsics[0], landmarks,
+                      cam_z_threshold, projected_points, projected_track_ids);
+
+    std::cout << "Projected " << projected_track_ids.size() << " points."
+              << std::endl;
+
+    KeypointsData kdl;
+
+    pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
+
+    detectKeypointsAndDescriptors(imgl, kdl, num_features_per_image,
+                                  rotate_features);
+
+    feature_corners[fcidl] = kdl;
+
+    LandmarkMatchData md;
+    find_matches_landmarks(kdl, landmarks, feature_corners, projected_points,
+                           projected_track_ids, match_max_dist_2d,
+                           feature_match_max_dist, feature_match_test_next_best,
+                           md);
+
+    std::cout << "Found " << md.matches.size() << " matches." << std::endl;
+
+    localize_camera(current_pose, calib_cam.intrinsics[0], kdl, landmarks,
+                    reprojection_error_pnp_inlier_threshold_pixel, md);
+
+    current_pose = md.T_w_c;
+
+    if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
+        !opt_finished) {
+      take_keyframe = true;
+    }
+
+    if (!opt_running && opt_finished) {
+      opt_thread->join();
+      landmarks = landmarks_opt;
+      cameras = cameras_opt;
+      calib_cam = calib_cam_opt;
+
+      opt_finished = false;
+    }
+
+    // update image views
+    change_display_to_image(fcidl);
+    change_display_to_image(fcidr);
+
+    current_frame++;
     return true;
   }
 }
