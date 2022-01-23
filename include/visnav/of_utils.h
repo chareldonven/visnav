@@ -70,15 +70,22 @@ PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
 }
 
 /// This method checks if all patches contain enough points
-bool not_enough_points_in_patch(const FeaturePatchPair& fpp,
-                                const unsigned int min_points_per_patch) {
+bool not_enough_points_in_patch(
+    const std::vector<std::pair<FeatureId, TrackId>>& inliers,
+    const KeypointsPositions& kd, const pangolin::ManagedImage<uint8_t>& img,
+    const unsigned int min_points_per_patch) {
   unsigned int patch_counter[4];
   for (size_t i = 0; i < 4; i++) {
     patch_counter[i] = 0;
   }
 
-  for (const auto& elem : fpp) {
-    patch_counter[elem.second - 1] += 1;
+  for (const auto& pair : inliers) {
+    const auto& featureID = pair.first;
+    Point2f point;
+    point.x = kd[featureID].x();
+    point.y = kd[featureID].y();
+    const auto& patchID = find_patchID(img, point);
+    patch_counter[patchID - 1] += 1;
   }
 
   bool not_enough = false;
@@ -86,21 +93,20 @@ bool not_enough_points_in_patch(const FeaturePatchPair& fpp,
   for (int i = 0; i < 4; i++) {
     not_enough = not_enough || (patch_counter[i] < min_points_per_patch);
   }
-  std::cout << "fpp: " << fpp.size() << " Patch1: " << patch_counter[0]
-            << " ; Patch2: " << patch_counter[1]
-            << " ; Patch3: " << patch_counter[2]
-            << " ; Patch4: " << patch_counter[3] << std::endl;
+
   return not_enough;
 }
 
 /// This checks if sterio matching is nessesary.
 /// In the first frame it has to do it in the following enough_points_in_patch
 /// is called
-bool should_track_into_stereo(const int current_frame,
-                              const FeaturePatchPair& fpp,
-                              const int min_points_per_patch) {
+bool should_track_into_stereo(
+    const int current_frame,
+    const std::vector<std::pair<FeatureId, TrackId>>& inliers,
+    const KeypointsPositions& kd, const pangolin::ManagedImage<uint8_t>& img,
+    const int min_points_per_patch) {
   if (current_frame == 0) return true;
-  return not_enough_points_in_patch(fpp, min_points_per_patch);
+  return not_enough_points_in_patch(inliers, kd, img, min_points_per_patch);
 }
 
 void find_keypoints_in_patch(const cv::Mat& patch,
@@ -145,16 +151,32 @@ void detect_keypoints(const pangolin::ManagedImage<uint8_t>& img_raw,
   find_keypoints_in_patch(subimage3, img_raw, kd, num_features, 3);
   find_keypoints_in_patch(subimage4, img_raw, kd, num_features, 4);
 }
-void get_tracked_keypoints(const TrackedPoints& trackedPoints,
-                           const KeypointsPositions& old_kdl,
-                           KeypointsPositions& new_kdl) {
+void get_kd_from_trackedPoints(const TrackedPoints& trackedPoints,
+                               const KeypointsData& old_kdl,
+                               KeypointsData& new_kdl) {
   for (const auto& trackedPoint : trackedPoints) {
-    const auto& featureID = trackedPoint.second;
-    const auto& position = old_kdl.at(featureID);
-    new_kdl.emplace_back(position);
+    const auto& featureID = trackedPoint.first;
+    const auto& position = old_kdl.corners.at(featureID);
+    const auto& angle = old_kdl.corner_angles.at(featureID);
+    new_kdl.corners.emplace_back(position);
+    new_kdl.corner_angles.emplace_back(angle);
   }
 }
+void get_information_from_trackedPoints(const TrackedPoints& trackedPoints,
+                                        const KeypointsData& old_kdl,
+                                        KeypointsData& new_kdl,
+                                        std::vector<TrackId>& trackIDs) {
+  for (const auto& trackedPoint : trackedPoints) {
+    const auto& featureID = trackedPoint.first;
+    const auto& position = old_kdl.corners.at(featureID);
+    const auto& angle = old_kdl.corner_angles.at(featureID);
 
+    new_kdl.corners.emplace_back(position);
+    new_kdl.corner_angles.emplace_back(angle);
+    const auto& trackID = trackedPoint.second;
+    trackIDs.emplace_back(trackID);
+  }
+}
 bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
                      const int threshold) {
   double norm = cv::norm(cv::Mat(position0), cv::Mat(position1));
@@ -168,9 +190,6 @@ bool check_threshold_eigen(const Eigen::Vector2d& point0,
   return norm < threshold;
 }
 
-void delete_duplicate_featureIDs(
-    KeypointsPositions& kdl, KeypointsPositions& kdr,
-    std::vector<std::pair<FeatureId, FeatureId>>& stereo_matches) {}
 void match_stereo_with_opticalflow(
     const KeypointsPositions& kdl, KeypointsPositions& kdr,
     const pangolin::ManagedImage<uint8_t>& img_raw_l,
@@ -223,32 +242,7 @@ void match_stereo_with_opticalflow(
     }
   }
 }
-void find_md(
-    const KeypointsPositions& kdl,
 
-    const std::vector<Eigen::Vector2d,
-                      Eigen::aligned_allocator<Eigen::Vector2d>>&
-        projected_points,
-    const std::vector<TrackId>& projected_track_ids, LandmarkMatchData& md,
-    const std::vector<std::pair<FeatureId, FeatureId>>& stereo_matches) {
-  // Find the matches between projected landmarks and detected keypoints or
-  // trackedPoints You should fill md.matches with <featureId,trackId> pairs for
-  // the successful matches that pass all tests.
-
-  /// Check if the projected position of this landmark is close to one of the
-  /// keypoints. Save its featureID! It can be more than one
-  for (const auto& pair : stereo_matches) {
-    const auto& featureID_left = pair.first;
-    const auto& position_left = kdl[featureID_left];
-    for (auto i = 0; i < projected_points.size(); i++) {
-      if (check_threshold_eigen(position_left, projected_points[i], 1)) {
-        md.matches.emplace_back(featureID_left, projected_track_ids[i]);
-        md.inliers.emplace_back(featureID_left, projected_track_ids[i]);
-        continue;
-      }
-    }
-  }
-}
 void add_new_landmarks_and_update_trackedPoints(
     const FrameCamId fcidl, const FrameCamId fcidr, const KeypointsData& kdl,
     const KeypointsData& kdr, const Calibration& calib_cam,
@@ -262,16 +256,6 @@ void add_new_landmarks_and_update_trackedPoints(
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
   const Eigen::Vector3d t_0_1 = T_0_1.translation();
   const Eigen::Matrix3d R_0_1 = T_0_1.rotationMatrix();
-
-  // TODO SHEET 5: Add new landmarks and observations. Here md_stereo contains
-  // stereo matches for the current frame and md contains feature to landmark
-  // matches for the left camera (camera 0). For all inlier feature to landmark
-  // matches add the observations to the existing landmarks. If the left
-  // camera's feature appears also in md_stereo.inliers, then add both
-  // observations. For all inlier stereo observations that were not added to the
-  // existing landmarks, triangulate and add new landmarks. Here
-  // next_landmark_id is a running index of the landmarks, so after adding a new
-  // landmark you should always increase next_landmark_id by 1.
 
   std::vector<std::pair<FeatureId, FeatureId>> other_stereo_points;
   // For all inlier landmark matches
@@ -288,7 +272,7 @@ void add_new_landmarks_and_update_trackedPoints(
       if (match.first == stereo_l_featureID) {
         // Add an observation for the right camera as well
         landmarks.at(match_trackID).obs.emplace(fcidr, stereo_r_featureID);
-        trackedPoints.emplace(match_trackID, match_feature_id);
+        trackedPoints.emplace(match_feature_id, match_trackID);
       }
     }
   }
@@ -342,14 +326,15 @@ void add_new_landmarks_and_update_trackedPoints(
     landmarks.at(new_trackID).obs.emplace(fcidl, other_stereo_points[i].first);
     landmarks.at(new_trackID).obs.emplace(fcidr, other_stereo_points[i].second);
     const auto& featureID = other_stereo_points[i].first;
-    trackedPoints.emplace(new_trackID, featureID);
+    trackedPoints.emplace(featureID, new_trackID);
   }
 }
 void match_with_opticalflow(
     const KeypointsPositions& kd_current, KeypointsPositions& kd_next,
     const pangolin::ManagedImage<uint8_t>& img_raw_current,
     const pangolin::ManagedImage<uint8_t>& img_raw_next,
-    TrackedPoints& trackedPoints, LandmarkMatchData& md) {
+    TrackedPoints& trackedPoints, std::vector<TrackId>& trackIDs,
+    LandmarkMatchData& md) {
   cv::Mat image_current(img_raw_current.h, img_raw_current.w, CV_8U,
                         img_raw_current.ptr);
   cv::Mat image_next(img_raw_next.h, img_raw_next.w, CV_8U, img_raw_next.ptr);
@@ -388,16 +373,13 @@ void match_with_opticalflow(
       if (img_raw_next.InBounds(static_cast<int>(next_position.x()),
                                 static_cast<int>(next_position.y()))) {
         kd_next.emplace_back(next_position);
-        const auto& trackID = md.matches.at(i).second;
+        const auto& trackID = trackIDs[i];
         FeatureId featureID = kd_next.size() - 1;
-        trackedPoints.emplace(trackID, featureID);
+        trackedPoints.emplace(featureID, trackID);
+        md.matches.emplace_back(featureID, trackID);
       }
     }
   }
-}
-void update_trackedPoints(TrackedPoints& trackedPoints,
-                          std::vector<std::pair<FeatureId, TrackId>>& matches) {
-
 }
 
 void updateVisualisationTracks(const TrackedPoints& trackedPoints,
@@ -405,75 +387,85 @@ void updateVisualisationTracks(const TrackedPoints& trackedPoints,
                                const KeypointsPositions& kd,
                                VisualisationTracks& visualisationTracks) {
   VisualisationTracks newVisualisationTracks;
-  for (const auto trackedPoint : trackedPoints) {
-    PointsOfTrack pointsOfTrack = visualisationTracks[trackedPoint.first];
-    pointsOfTrack.insert(pointsOfTrack.begin(), kd[trackedPoint.second]);
+  for (const auto& trackedPoint : trackedPoints) {
+    PointsOfTrack pointsOfTrack = visualisationTracks[trackedPoint.second];
+    pointsOfTrack.insert(pointsOfTrack.begin(), kd[trackedPoint.first]);
     if (pointsOfTrack.size() > tracklength) pointsOfTrack.pop_back();
-    newVisualisationTracks[trackedPoint.first] = pointsOfTrack;
+    newVisualisationTracks[trackedPoint.second] = pointsOfTrack;
   }
   visualisationTracks = newVisualisationTracks;
 }
-/*
-void match_stereo_landmarks_with_opticalflow(
-    const KeypointsPositions& kdl, const KeypointsPositions& kd_landmarks,
-    const pangolin::ManagedImage<uint8_t>& img_raw, LandmarkMatchData& md,
-    MatchData& md_stereo
 
-) {
-  /// Find keypoints to be matched:
-  ///
-  std::vector<cv::Point2f> left_keypoints_positions;
-  for (const auto& pair : md_stereo.inliers) {
-    const auto& left_featureID = pair.first;
-    const auto& position = kdl.at(left_featureID);
+void localize_camera_and_update_trackedPoints(
+    const Sophus::SE3d& current_pose,
+    const std::shared_ptr<AbstractCamera<double>>& cam,
+    const KeypointsData& kdl, const Landmarks& landmarks,
+    const double reprojection_error_pnp_inlier_threshold_pixel,
+    LandmarkMatchData& md, TrackedPoints& trackedPoints) {
+  md.inliers.clear();
 
-    cv::Point2f point;
-    point.x = position.x();
-    point.y = position.y();
-    left_keypoints_positions.emplace_back(point);
+  // default to previous pose if not enough inliers
+  md.T_w_c = current_pose;
+
+  if (md.matches.size() < 4) {
+    return;
   }
 
-  cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
+  // TODO SHEET 5: Find the pose (md.T_w_c) and the inliers (md.inliers) using
+  // the landmark to keypoints matches and PnP. This should be similar to the
+  // localize_camera in exercise 4 but in this exercise we don't explicitly have
+  // tracks.
 
-  std::vector<cv::Point2f> left_keypoints_positions;
-  for (const auto& left_keypoint_position : kdl) {
-    cv::Point2f point;
-    point.x = left_keypoint_position.x();
-    point.y = left_keypoint_position.y();
-    left_keypoints_positions.emplace_back(point);
+  opengv::bearingVectors_t bearing_vectors;
+  opengv::points_t points;
+
+  for (const auto& match : md.matches) {
+    auto landmark = landmarks.at(match.second);
+    auto point3d = landmark.p;
+    points.push_back(point3d);
+
+    auto corner_point2d = kdl.corners[match.first];
+    auto corner_point3d = cam->unproject(corner_point2d);
+    bearing_vectors.push_back(corner_point3d.normalized());
   }
-  std::vector<cv::Point2f> all_right_keypoints_positions;
 
-  std::vector<uchar> status_forward;
-  std::vector<float> err_forward;
+  opengv::absolute_pose::CentralAbsoluteAdapter adapter(bearing_vectors,
+                                                        points);
 
-  calcOpticalFlowPyrLK(image_l, image_r, left_keypoints_positions,
-                       all_right_keypoints_positions, status_forward,
-                       err_forward);
+  opengv::sac::Ransac<
+      opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem>
+      ransac;
+  std::shared_ptr<opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem>
+      absposeproblem_ptr(
+          new opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem(
+              adapter, opengv::sac_problems::absolute_pose::
+                           AbsolutePoseSacProblem::KNEIP));
 
-  std::vector<uchar> status_backward;
-  std::vector<float> err_backward;
-  std::vector<cv::Point2f> all_new_left_keypoints_positions;
-  calcOpticalFlowPyrLK(image_r, image_l, all_right_keypoints_positions,
-                       all_new_left_keypoints_positions, status_backward,
-                       err_backward);
+  ransac.sac_model_ = absposeproblem_ptr;
+  ransac.threshold_ =
+      1.0 - cos(atan(reprojection_error_pnp_inlier_threshold_pixel / 500.0));
+  ransac.max_iterations_ = 100;
 
-  for (auto i = 0;
-       i < static_cast<int>(all_new_left_keypoints_positions.size()); i++) {
-    if (status_forward[i] && status_backward[i] &&
-        check_threshold(left_keypoints_positions[i],
-                        all_new_left_keypoints_positions[i], 3)) {
-      Eigen::Vector2d right_position;
-      right_position.x() = all_right_keypoints_positions[i].x;
-      right_position.y() = all_right_keypoints_positions[i].y;
-      if (img_raw_r.InBounds(static_cast<int>(right_position.x()),
-                             static_cast<int>(right_position.y()))) {
-        kdr.emplace_back(right_position);
-        stereo_matches.matches.emplace_back(i, kdr.size() - 1);
-        stereo_matches.inliers.emplace_back(i, kdr.size() - 1);
-      }
-    }
+  ransac.computeModel();
+  const auto& translation = ransac.model_coefficients_.topRightCorner(3, 1);
+  const auto& rotation = ransac.model_coefficients_.topLeftCorner(3, 3);
+  adapter.setR(rotation);
+  adapter.sett(translation);
+
+  const opengv::transformation_t nonlinear_transformation =
+      opengv::absolute_pose::optimize_nonlinear(adapter, ransac.inliers_);
+  ransac.sac_model_->selectWithinDistance(nonlinear_transformation,
+                                          ransac.threshold_, ransac.inliers_);
+
+  const auto& refined_tranlation =
+      nonlinear_transformation.topRightCorner(3, 1);
+  const auto& refined_rotation = nonlinear_transformation.topLeftCorner(3, 3);
+  trackedPoints.clear();
+  md.T_w_c = Sophus::SE3d(refined_rotation, refined_tranlation);
+  for (size_t i = 0; i < ransac.inliers_.size(); ++i) {
+    md.inliers.push_back(md.matches[ransac.inliers_[i]]);
+    trackedPoints.emplace(md.matches[ransac.inliers_[i]]);
   }
 }
-*/
+
 }  // namespace visnav

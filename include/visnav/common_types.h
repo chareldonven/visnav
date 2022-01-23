@@ -212,23 +212,12 @@ struct CameraCandidate {
 };
 // Right data type?
 using PatchID = unsigned int;
-struct OpticalFlowData {
-  TrackId trackID;
-  // Save position:  Should we use featureID or Vector2d
-  FeatureId featureID_current_frame;
 
-  PatchID patchID_current_frame;
-};
-// using TrackedPoints = std::vector<OpticalFlowData>;
-using TrackedPoints = std::map<TrackId, FeatureId>;
+using TrackedPoints = std::map<FeatureId, TrackId>;
 using FeaturePatchPair = std::map<FeatureId, PatchID>;
 /// collection of 2d corner points (indexed by FeatureId)
 using KeypointsPositions =
     std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>;
-struct StereoTrackedPoints {
-  KeypointsPositions left_image;
-  KeypointsPositions right_image;
-};
 
 using PointsOfTrack = std::vector<Eigen::Vector2d>;
 using VisualisationTracks = std::map<TrackId, PointsOfTrack>;
