@@ -391,29 +391,58 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
 
   float text_row = 20;
 
-  if (true) {
-    glLineWidth(1.0);
-    glColor3f(1.0, 0.0, 0.0);  // red
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  //
+  if (cam_id == 0) {
+    // point tail
+    if (false) {
+      glLineWidth(1.0);
+      glColor3f(1.0, 0.0, 0.0);  // red
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    for (const auto& track : visualisationTracks) {
-      for (size_t i = 0; i < track.second.size(); i++) {
-        Eigen::Vector2d c = track.second.at(i);
-        if (i == 0) {
-          glColor3f(0.0, 0.0, 1.0);
-          pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
-          glColor3f(1.0, 0.0, 0.0);
-        } else
-          pangolin::glDrawCirclePerimeter(c[0], c[1], 2.0);
+      for (const auto& track : visualisationTracks) {
+        for (size_t i = 0; i < track.second.size(); i++) {
+          Eigen::Vector2d c = track.second.at(i);
+          if (i == 0) {
+            glColor3f(0.0, 0.0, 1.0);
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+            glColor3f(1.0, 0.0, 0.0);
+          } else
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 2.0);
+        }
       }
+
+      glLineWidth(1.0);
+      pangolin::GlFont::I()
+          .Text("Detected %d corners", visualisationTracks.size())
+          .Draw(5, text_row);
     }
+    if (true) {
+      glLineWidth(1.0);
+      glColor3f(1.0, 0.0, 0.0);  // red
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    pangolin::GlFont::I()
-        .Text("Detected %d corners", visualisationTracks.size())
-        .Draw(5, text_row);
+      for (const auto& track : visualisationTracks) {
+        if (track.second.size() > 1) {
+          glColor3f(0.0, 0.0, 1.0);
+          pangolin::glDrawCirclePerimeter(track.second.at(0)[0],
+                                          track.second.at(0)[1], 1.0);
+          glColor3f(1.0, 0.0, 0.0);
+          for (size_t i = 1; i < track.second.size(); i++) {
+            Eigen::Vector2d c1 = track.second.at(i - 1);
+            Eigen::Vector2d c2 = track.second.at(i);
+            glLineWidth(2.0);
+            pangolin::glDrawLine(c1, c2);
+          }
+        }
+      }
+      glLineWidth(1.0);
+      pangolin::GlFont::I()
+          .Text("Detected %d corners", visualisationTracks.size())
+          .Draw(5, text_row);
+    }
   }
-
   /*if (show_detected) {
     glLineWidth(1.0);
     glColor3f(1.0, 0.0, 0.0);  // red
@@ -972,9 +1001,9 @@ void optimize() {
             << landmarks.size() << " points and " << num_obs << " observations."
             << std::endl;
 
-  // Fix oldest two cameras to fix SE3 and scale gauge. Making the whole second
-  // camera constant is a bit suboptimal, since we only need 1 DoF, but it's
-  // simple and the initial poses should be good from calibration.
+  // Fix oldest two cameras to fix SE3 and scale gauge. Making the whole
+  // second camera constant is a bit suboptimal, since we only need 1 DoF, but
+  // it's simple and the initial poses should be good from calibration.
   FrameId fid = *(kf_frames.begin());
   // std::cout << "fid " << fid << std::endl;
 
