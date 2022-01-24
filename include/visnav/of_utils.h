@@ -390,15 +390,23 @@ void updateVisualisationTracks(const TrackedPoints& trackedPoints,
 }
 
 double points2Angle(const Eigen::Vector2d& p1, const Eigen::Vector2d& p2) {
-  double m = (p2[1] - p1[1]) / (p2[0] - p1[0]);
   double pi = 3.14159265;
-  double angle = atan(m) * 180.0 / pi + 180.0;
+  Eigen::Vector2d p0;
+  p0[0] = p1[0];
+  p0[1] = p1[1] + 1;
+
+  Eigen::Vector2d w = p2 - p1;
+  Eigen::Vector2d v;
+  v[0] = 0;
+  v[1] = w.norm();
+
+  double dot = w[0] * v[0] + w[1] * v[1];
+  double det = w[1] * v[0] - w[0] * v[1];
+  double angle = atan2(det, dot) * 180.0 / pi + 180.0;
   return angle;
 }
 
-void angle2rgb(double h, int r, int g, int b) {
-  // double h = angle * 360.0;
-
+void angle2rgb(double h, int& r, int& g, int& b) {
   double x = 1 - abs(fmod(h / 60.0, 2.0) - 1);
 
   if (h < 60) {

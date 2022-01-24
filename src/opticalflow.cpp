@@ -434,6 +434,7 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
 
             // angle in degrees
             double angle = points2Angle(c1, c2);
+
             int r, g, b;
 
             angle2rgb(angle, r, b, g);
