@@ -219,7 +219,27 @@ Button next_step_btn("ui.next_step", &next_step);
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
+clock_t start, end;
+std::vector<std::pair<Sophus::SE3d, double>> t_ns;
+unsigned nr_keyframes;
+void save_trajectory() {
+  std::ofstream os("trajectory_of_i.txt");
 
+  os << "# timestamp tx ty tz qx qy qz qw" << std::endl;
+
+  for (size_t i = 1; i < t_ns.size(); i++) {
+    const Sophus::SE3d& pose = t_ns[i].first;
+    const auto& timestamp = i;
+    os << std::scientific << std::setprecision(18) << timestamp << " "
+       << pose.translation().x() << " " << pose.translation().y() << " "
+       << pose.translation().z() << " " << pose.unit_quaternion().x() << " "
+       << pose.unit_quaternion().y() << " " << pose.unit_quaternion().z()
+       << pose.unit_quaternion().w() << std::endl;
+  }
+
+  std::cout << "Saved trajectory!" << std::endl;
+  os.close();
+}
 // Parse parameters, load data, and create GUI window and event loop (or
 // process everything in non-gui mode).
 int main(int argc, char** argv) {
@@ -374,7 +394,9 @@ int main(int argc, char** argv) {
       // nop
     }
   }
-
+  save_trajectory();
+  std::cout << "Keyframes: " << nr_keyframes << " , Poses: " << t_ns.size()
+            << std::endl;
   return 0;
 }
 
@@ -808,6 +830,7 @@ void stereo_tracking() {
 
   cameras[fcidl].T_w_c = current_pose;
   cameras[fcidr].T_w_c = current_pose * T_0_1;
+  nr_keyframes++;
 
   add_new_landmarks_and_update_trackedPoints(fcidl, fcidr, kdl, kdr, calib_cam,
                                              md_stereo, md, landmarks,
@@ -886,11 +909,20 @@ void frame_to_frame_tracking() {
 bool next_step() {
   if (current_frame + 1 >= int(images.size()) / NUM_CAMS) return false;
 
+  start = clock();
   if (take_keyframe) {
     stereo_tracking();
   }
 
   frame_to_frame_tracking();
+  end = clock();
+  double last_timestamp;
+  if (t_ns.size() == 0) {
+    last_timestamp = 0;
+  } else {
+    last_timestamp = t_ns[t_ns.size() - 1].second;
+  }
+  t_ns.emplace_back(current_pose, last_timestamp + double(end - start));
   return true;
 }
 
@@ -966,7 +998,7 @@ void optimize() {
   ba_options.optimize_intrinsics = ba_optimize_intrinsics;
   ba_options.use_huber = true;
   ba_options.huber_parameter = reprojection_error_huber_pixel;
-  ba_options.max_num_iterations = 20;
+  ba_options.max_num_iterations = 30;
   ba_options.verbosity_level = ba_verbose;
 
   calib_cam_opt = calib_cam;

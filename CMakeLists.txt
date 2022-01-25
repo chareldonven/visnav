@@ -124,5 +124,7 @@ target_link_libraries(opticalflow Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 add_executable(test_openCV_lk src/test_opencv_lk.cpp)
 target_link_libraries(test_openCV_lk Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
+add_executable(evaluate src/evaluate.cpp src/evaluate_utils.cpp)
+target_link_libraries(evaluate Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 enable_testing()
 add_subdirectory(test)

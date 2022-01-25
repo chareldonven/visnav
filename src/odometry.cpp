@@ -216,7 +216,27 @@ Button next_step_btn("ui.next_step", &next_step);
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
+clock_t start, end;
+std::vector<std::pair<Sophus::SE3d, double>> t_ns;
 
+void save_trajectory() {
+  std::ofstream os("trajectory_i.txt");
+
+  os << "# timestamp tx ty tz qx qy qz qw" << std::endl;
+
+  for (size_t i = 1; i < t_ns.size(); i++) {
+    const Sophus::SE3d& pose = t_ns[i].first;
+    const auto& timestamp = i;
+    os << std::scientific << std::setprecision(18) << timestamp << " "
+       << pose.translation().x() << " " << pose.translation().y() << " "
+       << pose.translation().z() << " " << pose.unit_quaternion().x() << " "
+       << pose.unit_quaternion().y() << " " << pose.unit_quaternion().z()
+       << pose.unit_quaternion().w() << std::endl;
+  }
+
+  std::cout << "Saved trajectory!" << std::endl;
+  os.close();
+}
 // Parse parameters, load data, and create GUI window and event loop (or
 // process everything in non-gui mode).
 int main(int argc, char** argv) {
@@ -369,6 +389,8 @@ int main(int argc, char** argv) {
       // nop
     }
   }
+
+  save_trajectory();
 
   return 0;
 }
@@ -776,8 +798,9 @@ void load_data(const std::string& dataset_path, const std::string& calib_path) {
 // Execute next step in the overall odometry pipeline. Call this repeatedly
 // until it returns false for automatic execution.
 bool next_step() {
-  if (current_frame >= int(images.size()) / NUM_CAMS) return false;
+  if (current_frame + 1 >= int(images.size()) / NUM_CAMS) return false;
 
+  start = clock();
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
 
   if (take_keyframe) {
@@ -848,7 +871,6 @@ bool next_step() {
     remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
                          kf_frames);
     optimize();
-
     current_pose = cameras[fcidl].T_w_c;
 
     // update image views
@@ -858,6 +880,14 @@ bool next_step() {
     compute_projections();
 
     current_frame++;
+    end = clock();
+    double last_timestamp;
+    if (t_ns.size() == 0) {
+      last_timestamp = 0;
+    } else {
+      last_timestamp = t_ns[t_ns.size() - 1].second;
+    }
+    t_ns.emplace_back(current_pose, last_timestamp + double(end - start));
     return true;
   } else {
     FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
@@ -913,6 +943,15 @@ bool next_step() {
     change_display_to_image(fcidr);
 
     current_frame++;
+
+    end = clock();
+    double last_timestamp;
+    if (t_ns.size() == 0) {
+      last_timestamp = 0;
+    } else {
+      last_timestamp = t_ns[t_ns.size() - 1].second;
+    }
+    t_ns.emplace_back(current_pose, last_timestamp + double(end - start));
     return true;
   }
 }
