@@ -509,4 +509,38 @@ void localize_camera_and_update_trackedPoints(
   }
 }
 
+bool check_duplicates(const Eigen::Vector2d& point0,
+                      const Eigen::Vector2d& point1, const double threshold) {
+  double norm = (point0 - point1).norm();
+  return norm < threshold;
+}
+
+void filter_landmarks_and_trackIds(Landmarks& landmarks, TrackedPoints& tp,
+                                   VisualisationTracks& vt,
+                                   KeypointsPositions& kd,
+                                   const double threshold) {
+  std::vector<int> indexVector;
+  for (int i = tp.size() - 1; i >= 0; i--) {
+    for (int j = i - 1; j >= 0; j--) {
+      FeatureId featureId1 = i;
+      FeatureId featureId2 = j;
+      if (check_duplicates(kd[featureId1], kd[featureId2], threshold)) {
+        if (vt[tp[featureId1]].size() > vt[tp[featureId2]].size()) {
+          vt[tp[featureId2]] = vt[tp[featureId1]];
+        }
+        indexVector.push_back(featureId1);
+        break;
+      }
+    }
+  }
+  for (size_t i = 0; i < indexVector.size(); i++) {
+    FeatureId deleteFeatureId = indexVector[i];
+    TrackId deleteTrackId = tp[deleteFeatureId];
+
+    kd.erase(kd.begin() + deleteFeatureId);
+    vt.erase(deleteTrackId);
+    landmarks.erase(deleteTrackId);
+    tp.erase(deleteFeatureId);
+  }
+}
 }  // namespace visnav

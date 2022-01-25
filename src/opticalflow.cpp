@@ -836,8 +836,12 @@ void stereo_tracking() {
                                              md_stereo, md, landmarks,
                                              next_landmark_id, trackedPoints);
 
+  filter_landmarks_and_trackIds(landmarks, trackedPoints, visualisationTracks,
+                                kdl.corners, 1e-5);
+
   remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
                        kf_frames);
+
   optimize();
 
   current_pose = cameras[fcidl].T_w_c;
