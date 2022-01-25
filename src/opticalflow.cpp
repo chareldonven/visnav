@@ -162,16 +162,12 @@ pangolin::Var<bool> lock_frames("ui.lock_frames", true, true);
 pangolin::Var<bool> show_detected("ui.show_detected", true, true);
 pangolin::Var<bool> show_matches("ui.show_matches", true, true);
 pangolin::Var<bool> show_inliers("ui.show_inliers", true, true);
-pangolin::Var<bool> show_reprojections("ui.show_reprojections", true, true);
-pangolin::Var<bool> show_outlier_observations("ui.show_outlier_obs", false,
-                                              true);
 pangolin::Var<bool> show_ids("ui.show_ids", false, true);
-pangolin::Var<bool> show_epipolar("hidden.show_epipolar", false, true);
 pangolin::Var<bool> show_cameras3d("hidden.show_cameras", true, true);
 pangolin::Var<bool> show_points3d("hidden.show_points", true, true);
 pangolin::Var<bool> show_old_points3d("hidden.show_old_points3d", true, true);
 
-pangolin::Var<bool> show_tail_points("ui.show_tail_points", true, true);
+pangolin::Var<bool> show_tail_points("ui.show_tail_points", false, true);
 pangolin::Var<bool> show_tail_line("ui.show_tail_line", true, true);
 
 //////////////////////////////////////////////
@@ -390,7 +386,7 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
       static_cast<FrameId>(view_id == 0 ? show_frame1 : show_frame2);
   auto cam_id = static_cast<CamId>(view_id == 0 ? show_cam1 : show_cam2);
 
-  FrameCamId fcid(frame_id, cam_id);
+  FrameCamId fcid(frame_id - 1, cam_id);
 
   float text_row = 20;
 
@@ -512,7 +508,7 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
         static_cast<FrameId>(view_id == 0 ? show_frame2 : show_frame1);
     auto o_cam_id = static_cast<CamId>(view_id == 0 ? show_cam2 : show_cam1);
 
-    FrameCamId o_fcid(o_frame_id, o_cam_id);
+    FrameCamId o_fcid(o_frame_id - 1, o_cam_id);
 
     int idx = -1;
 
@@ -586,111 +582,6 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
             .Text("Detected %d inliers", it->second.inliers.size())
             .Draw(5, text_row);
         text_row += 20;
-      }
-    }
-  }
-
-  if (show_reprojections) {
-    if (image_projections.count(fcid) > 0) {
-      glLineWidth(1.0);
-      glColor3f(1.0, 0.0, 0.0);  // red
-      glEnable(GL_BLEND);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-      const size_t num_points = image_projections.at(fcid).obs.size();
-      double error_sum = 0;
-      size_t num_outliers = 0;
-
-      // count up and draw all inlier projections
-      for (const auto& lm_proj : image_projections.at(fcid).obs) {
-        error_sum += lm_proj->reprojection_error;
-
-        if (lm_proj->outlier_flags != OutlierNone) {
-          // outlier point
-          glColor3f(1.0, 0.0, 0.0);  // red
-          ++num_outliers;
-        } else if (lm_proj->reprojection_error >
-                   reprojection_error_huber_pixel) {
-          // close to outlier point
-          glColor3f(1.0, 0.5, 0.0);  // orange
-        } else {
-          // clear inlier point
-          glColor3f(1.0, 1.0, 0.0);  // yellow
-        }
-        pangolin::glDrawCirclePerimeter(lm_proj->point_reprojected, 3.0);
-        pangolin::glDrawLine(lm_proj->point_measured,
-                             lm_proj->point_reprojected);
-      }
-
-      // only draw outlier projections
-      if (show_outlier_observations) {
-        glColor3f(1.0, 0.0, 0.0);  // red
-        for (const auto& lm_proj : image_projections.at(fcid).outlier_obs) {
-          pangolin::glDrawCirclePerimeter(lm_proj->point_reprojected, 3.0);
-          pangolin::glDrawLine(lm_proj->point_measured,
-                               lm_proj->point_reprojected);
-        }
-      }
-
-      glColor3f(1.0, 0.0, 0.0);  // red
-      pangolin::GlFont::I()
-          .Text("Average repr. error (%u points, %u new outliers): %.2f",
-                num_points, num_outliers, error_sum / num_points)
-          .Draw(5, text_row);
-      text_row += 20;
-    }
-  }
-  if (show_epipolar) {
-    glLineWidth(1.0);
-    glColor3f(0.0, 1.0, 1.0);  // bright teal
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    auto o_frame_id =
-        static_cast<FrameId>(view_id == 0 ? show_frame2 : show_frame1);
-    auto o_cam_id = static_cast<CamId>(view_id == 0 ? show_cam2 : show_cam1);
-
-    FrameCamId o_fcid(o_frame_id, o_cam_id);
-
-    int idx = -1;
-
-    auto it = feature_matches.find(std::make_pair(fcid, o_fcid));
-
-    if (it != feature_matches.end()) {
-      idx = 0;
-    } else {
-      it = feature_matches.find(std::make_pair(o_fcid, fcid));
-      if (it != feature_matches.end()) {
-        idx = 1;
-      }
-    }
-
-    if (idx >= 0 && it->second.inliers.size() > 20) {
-      Sophus::SE3d T_this_other =
-          idx == 0 ? it->second.T_i_j : it->second.T_i_j.inverse();
-
-      Eigen::Vector3d p0 = T_this_other.translation().normalized();
-
-      int line_id = 0;
-      for (double i = -M_PI_2 / 2; i <= M_PI_2 / 2; i += 0.05) {
-        Eigen::Vector3d p1(0, sin(i), cos(i));
-
-        if (idx == 0) p1 = it->second.T_i_j * p1;
-
-        p1.normalize();
-
-        std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
-            line;
-        for (double j = -1; j <= 1; j += 0.001) {
-          line.emplace_back(calib_cam.intrinsics[cam_id]->project(
-              p0 * j + (1 - std::abs(j)) * p1));
-        }
-
-        Eigen::Vector2d c = calib_cam.intrinsics[cam_id]->project(p1);
-        pangolin::GlFont::I().Text("%d", line_id).Draw(c[0], c[1]);
-        line_id++;
-
-        pangolin::glDrawLineStrip(line);
       }
     }
   }
