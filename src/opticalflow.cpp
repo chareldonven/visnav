@@ -88,7 +88,7 @@ constexpr int NUM_CAMS = 2;
 ///////////////////////////////////////////////////////////////////////////////
 /// Variables
 ///////////////////////////////////////////////////////////////////////////////
-constexpr int min_points_per_patch = 10;
+int min_points_per_patch = 10;
 int current_frame = 0;
 Sophus::SE3d current_pose;
 bool take_keyframe = true;
@@ -219,30 +219,32 @@ Button next_step_btn("ui.next_step", &next_step);
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
-clock_t start, end;
-std::vector<std::pair<Sophus::SE3d, double>> t_ns;
-unsigned nr_keyframes;
+
+std::vector<Sophus::SE3d> poses;
+
 void save_trajectory() {
-  std::ofstream os("trajectory_of_i.txt");
+  std::ofstream os("trajectory_OpticalFlow.txt");
 
   os << "# timestamp tx ty tz qx qy qz qw" << std::endl;
 
-  for (size_t i = 1; i < t_ns.size(); i++) {
-    const Sophus::SE3d& pose = t_ns[i].first;
-    const auto& timestamp = i;
-    os << std::scientific << std::setprecision(18) << timestamp << " "
+  for (size_t i = 0; i < poses.size(); i++) {
+    const Sophus::SE3d& pose = poses[i];
+
+    os << std::scientific << std::setprecision(18) << timestamps[i] << " "
        << pose.translation().x() << " " << pose.translation().y() << " "
        << pose.translation().z() << " " << pose.unit_quaternion().x() << " "
        << pose.unit_quaternion().y() << " " << pose.unit_quaternion().z()
        << pose.unit_quaternion().w() << std::endl;
   }
 
-  std::cout << "Saved trajectory!" << std::endl;
+  std::cout << "Size of poses: " << poses.size() << " -> Saved trajectory!"
+            << std::endl;
   os.close();
 }
 // Parse parameters, load data, and create GUI window and event loop (or
 // process everything in non-gui mode).
 int main(int argc, char** argv) {
+  poses.emplace_back(current_pose);
   FrameCamId initial_frame(0, 0);
   feature_corners[initial_frame] = {};
   bool show_gui = true;
@@ -395,8 +397,7 @@ int main(int argc, char** argv) {
     }
   }
   save_trajectory();
-  std::cout << "Keyframes: " << nr_keyframes << " , Poses: " << t_ns.size()
-            << std::endl;
+
   return 0;
 }
 
@@ -783,7 +784,7 @@ void stereo_tracking() {
 
   get_kd_from_trackedPoints(trackedPoints, feature_corners.at(fcidl), kdl);
 
-  detect_keypoints(imgl, kdl.corners, num_features_per_image / 4);
+  detect_keypoints(imgl, kdl.corners, num_features_per_image);
   computeAngles(imgl, kdl, rotate_features);
 
   match_stereo_with_opticalflow(kdl.corners, kdr.corners, imgl, imgr,
@@ -796,11 +797,6 @@ void stereo_tracking() {
             << std::endl;
 
   feature_corners[fcidl] = kdl;
-
-  if (feature_corners.find(fcidr) != feature_corners.end()) {
-    auto test = feature_corners.at(fcidr);
-    std::cout << "fcidr exists" << std::endl;
-  }
 
   feature_matches[std::make_pair(fcidl, fcidr)] = md_stereo;
 
@@ -830,7 +826,6 @@ void stereo_tracking() {
 
   cameras[fcidl].T_w_c = current_pose;
   cameras[fcidr].T_w_c = current_pose * T_0_1;
-  nr_keyframes++;
 
   add_new_landmarks_and_update_trackedPoints(fcidl, fcidr, kdl, kdr, calib_cam,
                                              md_stereo, md, landmarks,
@@ -870,11 +865,12 @@ void frame_to_frame_tracking() {
 
   std::cout << "Found " << md.matches.size() << " matches." << std::endl;
 
-  /*  localize_camera_and_update_trackedPoints(
-        current_pose, calib_cam.intrinsics[0], kd_next, landmarks,
-        reprojection_error_pnp_inlier_threshold_pixel, md, trackedPoints); */
+  /* localize_camera_and_update_trackedPoints(
+      current_pose, calib_cam.intrinsics[0], kd_next, landmarks,
+      reprojection_error_pnp_inlier_threshold_pixel, md, trackedPoints);*/
   localize_camera(current_pose, calib_cam.intrinsics[0], kd_next, landmarks,
                   reprojection_error_pnp_inlier_threshold_pixel, md);
+
   std::cout << "Found " << md.inliers.size() << " INLIER matches." << std::endl;
   current_pose = md.T_w_c;
 
@@ -909,20 +905,12 @@ void frame_to_frame_tracking() {
 bool next_step() {
   if (current_frame + 1 >= int(images.size()) / NUM_CAMS) return false;
 
-  start = clock();
   if (take_keyframe) {
     stereo_tracking();
   }
-
   frame_to_frame_tracking();
-  end = clock();
-  double last_timestamp;
-  if (t_ns.size() == 0) {
-    last_timestamp = 0;
-  } else {
-    last_timestamp = t_ns[t_ns.size() - 1].second;
-  }
-  t_ns.emplace_back(current_pose, last_timestamp + double(end - start));
+
+  poses.emplace_back(current_pose);
   return true;
 }
 
@@ -998,7 +986,7 @@ void optimize() {
   ba_options.optimize_intrinsics = ba_optimize_intrinsics;
   ba_options.use_huber = true;
   ba_options.huber_parameter = reprojection_error_huber_pixel;
-  ba_options.max_num_iterations = 30;
+  ba_options.max_num_iterations = 20;
   ba_options.verbosity_level = ba_verbose;
 
   calib_cam_opt = calib_cam;

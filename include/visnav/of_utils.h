@@ -56,7 +56,7 @@ using namespace cv;
 namespace visnav {
 /// This method returns the corresponding patch to a given point in an image
 PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
-                     cv::Point2f point) {
+                     const cv::Point2f point) {
   cv::Mat img(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
 
   PatchID result = 1;
