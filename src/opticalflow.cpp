@@ -413,7 +413,7 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
 
   float text_row = 20;
 
-  if (cam_id == 0) {
+  if (cam_id == 0 && (show_tail_points || show_tail_line)) {
     // point tail
     if (show_tail_points) {
       glLineWidth(1.0);
@@ -445,11 +445,6 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
           }
         }
       }
-
-      glLineWidth(1.0);
-      pangolin::GlFont::I()
-          .Text("Detected %d corners", visualisationTracks.size())
-          .Draw(5, text_row);
     }
     if (show_tail_line) {
       glLineWidth(1.0);
@@ -482,11 +477,12 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
           }
         }
       }
-      glLineWidth(1.0);
-      pangolin::GlFont::I()
-          .Text("Detected %d corners", visualisationTracks.size())
-          .Draw(5, text_row);
     }
+    glLineWidth(1.0);
+    /*pangolin::GlFont::I()
+        .Text("Tracking %d corners", visualisationTracks.size())
+        .Draw(5, text_row);*/
+    text_row += 20;
   }
   if (show_detected) {
     glLineWidth(1.0);
