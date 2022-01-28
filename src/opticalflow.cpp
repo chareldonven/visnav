@@ -479,9 +479,9 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
       }
     }
     glLineWidth(1.0);
-    /*pangolin::GlFont::I()
+    pangolin::GlFont::I()
         .Text("Tracking %d corners", visualisationTracks.size())
-        .Draw(5, text_row);*/
+        .Draw(5, text_row);
     text_row += 20;
   }
   if (show_detected) {
