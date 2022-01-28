@@ -325,16 +325,16 @@ struct Patches {
 
   std::vector<bool> patchHasKeypoints;
   std::vector<PatchID> patchIDs;
-  Patches() {
-    patchHasKeypoints.resize(16 * 16);
-    patchIDs.resize(16 * 16);
-    for (auto i = 0; i < 16; i++) {
-      for (auto j = 0; j < 16; j++) {
+  Patches(const int size) {
+    patchHasKeypoints.resize(size * size);
+    patchIDs.resize(size * size);
+    for (auto i = 0; i < size; i++) {
+      for (auto j = 0; j < size; j++) {
         PatchID patchID;
         patchID.x = i;
         patchID.y = j;
-        patchIDs[i + 16 * j] = patchID;
-        patchHasKeypoints[i + 16 * j] = false;
+        patchIDs[i + size * j] = patchID;
+        patchHasKeypoints[i + size * j] = false;
       }
     }
   }
