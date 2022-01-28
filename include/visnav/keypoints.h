@@ -34,6 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <bitset>
 #include <set>
+#include <stdexcept>
 
 #include <Eigen/Dense>
 #include <sophus/se3.hpp>
@@ -43,7 +44,77 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include <visnav/common_types.h>
+namespace keypoints_intern {
+// Rotates a 2d vector by angle
+Eigen::Vector2d rotate(const double angle, const Eigen::Vector2d& vector) {
+  auto cos_of_angle = std::cos(angle);
+  auto sin_of_angle = std::sin(angle);
+  Eigen::Matrix2d rotation;
+  rotation << cos_of_angle, -sin_of_angle, sin_of_angle, cos_of_angle;
+  return rotation * vector;
+}
 
+int compute_hamming_distance(const std::bitset<256>& bitset_1,
+                             const std::bitset<256>& bitset_2) {
+  // XOR
+  return (bitset_1 ^ bitset_2).count();
+}
+
+std::vector<std::pair<int, int>> match_implementation(
+    const std::vector<std::bitset<256>>& corner_descriptors_1,
+    const std::vector<std::bitset<256>>& corner_descriptors_2, int threshold,
+    double dist_2_best) {
+  std::vector<std::pair<int, int>> matches;
+
+  // Iterate over the set of descriptors P
+  for (size_t i = 0; i < corner_descriptors_1.size(); ++i) {
+    // Saves the value of the minimal distance. The initial value is
+    // descriptor_size + 1; is chosen such that the first distance value is
+    // always smaller than this value
+    int minimal_distance = 257;
+    // Distance to the second best match
+    int second_minimal_distance = 257;
+
+    // Current index in set of descriptors Q
+    int index_q_minimal;
+    // Set of descriptors P
+    const auto& bitset_p = corner_descriptors_1[i];
+
+    for (int j = 0; j < static_cast<int>(corner_descriptors_2.size()); ++j) {
+      // Set of descriptors Q
+      const auto& bitset_q = corner_descriptors_2[j];
+      auto distance = compute_hamming_distance(bitset_p, bitset_q);
+      // Check if the distance between the current bitset_p and current bitset_q
+      // is smaller than the previous distances
+      if (minimal_distance >= distance) {
+        second_minimal_distance = minimal_distance;
+        minimal_distance = distance;
+        index_q_minimal = j;
+
+      } else {
+        // Check if the distance between the current bitset_p and current
+        // bitset_q is smaller than the current second smallest distance
+        if (distance <= second_minimal_distance) {
+          second_minimal_distance = distance;
+        }
+      }
+    }
+    // Discard matches with distance larger or equal to the threshold.
+
+    if (minimal_distance < threshold) {
+      /*
+       * Discard matches if the distance to the second best match is smaller
+       * than the smallest distance multiplied by dist 2 best.
+       */
+      if (minimal_distance * dist_2_best <= second_minimal_distance) {
+        matches.emplace_back(i, index_q_minimal);
+      }
+    }
+  }
+
+  return matches;
+}
+}  // namespace keypoints_intern
 namespace visnav {
 
 const int PATCH_SIZE = 31;
@@ -52,6 +123,7 @@ const int EDGE_THRESHOLD = 19;
 
 typedef std::bitset<256> Descriptor;
 
+constexpr int descriptor_size = 256;
 char pattern_31_x_a[256] = {
     8,   4,   -11, 7,   2,   1,   -2,  -13, -13, 10,  -13, -11, 7,   -4,  -13,
     -9,  12,  -3,  -6,  11,  4,   5,   3,   -8,  -2,  -13, -7,  -4,  -10, 5,
@@ -159,14 +231,32 @@ void computeAngles(const pangolin::ManagedImage<uint8_t>& img_raw,
     const int cy = p[1];
 
     double angle = 0;
-
+    // m_pq should be signed int because x and y can be negative and
+    // img_raw(x_coordinate,y_cordinate) is an unsigned char
+    int m_01 = 0;
+    int m_10 = 0;
     if (rotate_features) {
-      // TODO SHEET 3: compute angle
-      UNUSED(img_raw);
-      UNUSED(cx);
-      UNUSED(cy);
+      // Iterate over all points inside the square with side length PATCH_SIZE
+      // because the circular patch around (cx, cy) is inscribed in this square
+      for (auto x = -HALF_PATCH_SIZE; x <= HALF_PATCH_SIZE; ++x) {
+        for (auto y = -HALF_PATCH_SIZE; y <= HALF_PATCH_SIZE; ++y) {
+          // x and y are relative to (cx, cy)
+          // compute the absolute coordinates of the pixel
+          auto x_coordinate = cx + x;
+          auto y_coordinate = cy + y;
+          // Check if the current pixel is a valid one
+          if (img_raw.InBounds(x_coordinate, y_coordinate)) {
+            // Check if the current pixel is in the circular patch around (cx,
+            // cy)
+            if (x * x + y * y <= HALF_PATCH_SIZE * HALF_PATCH_SIZE) {
+              m_10 += x * img_raw(x_coordinate, y_coordinate);
+              m_01 += y * img_raw(x_coordinate, y_coordinate);
+            }
+          }
+        }
+      }
     }
-
+    angle = std::atan2(m_01, m_10);
     kd.corner_angles[i] = angle;
   }
 }
@@ -185,10 +275,38 @@ void computeDescriptors(const pangolin::ManagedImage<uint8_t>& img_raw,
     const int cy = p[1];
 
     // TODO SHEET 3: compute descriptor
-    UNUSED(img_raw);
-    UNUSED(angle);
-    UNUSED(cx);
-    UNUSED(cy);
+
+    for (auto i = 0; i < descriptor_size; ++i) {
+      // Take the offset_a and offset_b around c and rotate them by angle
+      auto p_a_rotated = keypoints_intern::rotate(
+          angle, Eigen::Vector2d{pattern_31_x_a[i], pattern_31_y_a[i]});
+      auto p_b_rotated = keypoints_intern::rotate(
+          angle, Eigen::Vector2d{pattern_31_x_b[i], pattern_31_y_b[i]});
+      // Get integer coordinates of the point with the rotated offset point p_a
+      int im_x_a = cx + round(p_a_rotated[0]);
+      int im_y_a = cy + round(p_a_rotated[1]);
+      // Get integer coordinates of the point with the rotated offset point p_b
+      int im_x_b = cx + round(p_b_rotated[0]);
+      int im_y_b = cy + round(p_b_rotated[1]);
+
+      unsigned char intensity_a = 0;
+      unsigned char intensity_b = 0;
+      // Is it possible for the point to be out of bounds?
+      if (img_raw.InBounds(im_x_a, im_y_a)) {
+        intensity_a = img_raw(im_x_a, im_y_a);
+      } else
+        throw std::runtime_error("Point is out of bouds!");
+      if (img_raw.InBounds(im_x_b, im_y_b)) {
+        intensity_b = img_raw(im_x_b, im_y_b);
+      } else
+        throw std::runtime_error("Point is out of bouds!");
+
+      if (intensity_a < intensity_b) {
+        descriptor[i] = 1;
+      } else {
+        descriptor[i] = 0;
+      }
+    }
 
     kd.corner_descriptors[i] = descriptor;
   }
@@ -208,12 +326,32 @@ void matchDescriptors(const std::vector<std::bitset<256>>& corner_descriptors_1,
                       double dist_2_best) {
   matches.clear();
 
-  // TODO SHEET 3: match features
-  UNUSED(corner_descriptors_1);
-  UNUSED(corner_descriptors_2);
-  UNUSED(matches);
-  UNUSED(threshold);
-  UNUSED(dist_2_best);
+  // Match set of descriptors P to Q
+  auto matches_pq = keypoints_intern::match_implementation(
+      corner_descriptors_1, corner_descriptors_2, threshold, dist_2_best);
+  // Match set of descriptors Q to P
+  auto matches_qp = keypoints_intern::match_implementation(
+      corner_descriptors_2, corner_descriptors_1, threshold, dist_2_best);
+  // Get only matches that can be found in both matches
+  for (size_t i = 0; i < matches_pq.size(); ++i) {
+    // index in set P from the matches from P to Q
+    auto indexP_pq = matches_pq[i].first;
+    // index in set Q from the matches from P to Q
+    auto indexQ_pq = matches_pq[i].second;
+
+    for (int j = 0; j < static_cast<int>(matches_qp.size()); ++j) {
+      // index in set P from the matches from Q to P
+      auto indexP_qp = matches_qp[j].second;
+      // index in set Q from the matches from Q to P
+      auto indexQ_qp = matches_qp[j].first;
+
+      if (indexP_pq == indexP_qp) {
+        if (indexQ_pq == indexQ_qp) {
+          matches.emplace_back(indexP_pq, indexQ_pq);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace visnav

@@ -49,8 +49,10 @@ class BowDatabase {
   inline void insert(const FrameCamId& fcid, const BowVector& bow_vector) {
     // TODO SHEET 3: add a bow_vector that corresponds to frame fcid to the
     // inverted index. You can assume the image hasn't been added before.
-    UNUSED(fcid);
-    UNUSED(bow_vector);
+
+    for (const auto& kv : bow_vector) {
+      inverted_index[kv.first].emplace_back(fcid, kv.second);
+    }
   }
 
   inline void query(const BowVector& bow_vector, size_t num_results,
@@ -60,9 +62,39 @@ class BowDatabase {
     // to accumulate scores and std::partial_sort for getting the closest
     // results. You should use L1 difference as the distance measure. You can
     // assume that BoW descripors are L1 normalized.
-    UNUSED(bow_vector);
-    UNUSED(num_results);
-    UNUSED(results);
+
+    std::unordered_map<FrameCamId, double> scores;
+    for (const auto& bow_vector_element : bow_vector) {
+      const auto pointer_to_inverted_index_wordID =
+          inverted_index.find(bow_vector_element.first);
+      if (pointer_to_inverted_index_wordID != inverted_index.end()) {
+        for (const auto& element_in_current_inverted_index :
+             pointer_to_inverted_index_wordID->second) {
+          scores[element_in_current_inverted_index.first] +=
+              std::abs(bow_vector_element.second -
+                       element_in_current_inverted_index.second) -
+              std::abs(bow_vector_element.second) -
+              std::abs(element_in_current_inverted_index.second);
+        }
+      }
+    }
+
+    for (const auto& element_in_scores : scores) {
+      // See slides for the formula for the score
+      results.emplace_back(element_in_scores.first,
+                           element_in_scores.second + 2);
+    }
+
+    // Function to compare the elements of results
+    auto compare_scores = [](const auto& x, const auto& y) {
+      return x.second <= y.second;
+    };
+    // Sort the results for getting the closest results
+    std::partial_sort(results.begin(), results.end(), results.end(),
+                      compare_scores);
+    if (results.size() > num_results) {
+      results.resize(num_results);
+    }
   }
 
   void clear() { inverted_index.clear(); }
