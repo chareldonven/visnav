@@ -775,7 +775,42 @@ void load_data(const std::string& dataset_path, const std::string& calib_path) {
 ///////////////////////////////////////////////////////////////////////////////
 /// Here the algorithmically interesting implementation begins
 ///////////////////////////////////////////////////////////////////////////////
-void initial_step() {}
+void initial_step() {
+  take_keyframe = false;
+  const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
+
+  FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
+
+  KeypointsData& kdl = feature_corners[fcidl];
+  KeypointsData& kdr = feature_corners[fcidr];
+
+  pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
+  pangolin::ManagedImage<uint8_t> imgr = pangolin::LoadImage(images[fcidr]);
+
+  find_keypoints_in_all_regions(imgl, kdl.corners, 10);
+  computeAngles(imgl, kdl, rotate_features);
+  computeDescriptors(imgl, kdl);
+  MatchData md_stereo;
+  match_stereo_with_opticalflow(kdl.corners, kdr.corners, imgl, imgr,
+                                md_stereo);
+  computeAngles(imgr, kdr, rotate_features);
+  computeDescriptors(imgr, kdr);
+  md_stereo.T_i_j = T_0_1;
+  std::cout << "KF Found " << md_stereo.inliers.size() << " stereo-matches."
+            << std::endl;
+  feature_matches[std::make_pair(fcidl, fcidr)] = md_stereo;
+
+  cameras[fcidl].T_w_c = current_pose;
+  cameras[fcidr].T_w_c = current_pose * T_0_1;
+  initialize_map(landmarks, trackedPoints, next_landmark_id, md_stereo, kdl,
+                 kdr, fcidl, fcidr, calib_cam, current_pose);
+  // update image views
+  change_display_to_image(fcidl);
+  change_display_to_image(fcidr);
+
+  compute_projections();
+  current_frame++;
+}
 
 void stereo_tracking() {
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
