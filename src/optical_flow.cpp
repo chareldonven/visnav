@@ -59,6 +59,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/matching_utils.h>
 #include <visnav/vo_utils.h>
 #include <visnav/of_utils.h>
+#include <visnav/visl_utils.h>
+#include <visnav/evaluation_utils.h>
 #include <visnav/gui_helper.h>
 #include <visnav/tracks.h>
 
@@ -218,6 +220,15 @@ Button next_step_btn("ui.next_step", &next_step);
 TrackedPoints trackedPoints;
 
 Patches patches{8};
+std::vector<Sophus::SE3d> poses;
+///////////////////////////////////////////////////////////////////////////////
+/// Variables for visualisation
+///////////////////////////////////////////////////////////////////////////////
+
+pangolin::Var<bool> show_tail_points("ui.show_tail_points", false, true);
+pangolin::Var<bool> show_tail_line("ui.show_tail_line", true, true);
+VisualisationTracks visualisationTracks;
+constexpr int sizeOfVisualisation = 5;
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
@@ -375,6 +386,7 @@ int main(int argc, char** argv) {
     }
   }
 
+  save_trajectory(poses, timestamps, "traj.txt");
   return 0;
 }
 
@@ -386,10 +398,81 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
       static_cast<FrameId>(view_id == 0 ? show_frame1 : show_frame2);
   auto cam_id = static_cast<CamId>(view_id == 0 ? show_cam1 : show_cam2);
 
-  FrameCamId fcid(frame_id, cam_id);
+  FrameCamId fcid(frame_id - 1, cam_id);
 
   float text_row = 20;
 
+  if (cam_id == 0 && (show_tail_points || show_tail_line)) {
+    // point tail
+    if (show_tail_points) {
+      glLineWidth(1.0);
+      glColor3f(1.0, 0.0, 0.0);  // red
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+      for (const auto& track : visualisationTracks) {
+        for (size_t i = 0; i < track.second.size(); i++) {
+          Eigen::Vector2d c = track.second.at(i);
+          if (i == 0) {
+            glColor3f(0.0, 0.0, 1.0);
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 3.0);
+            if (show_ids) {
+              pangolin::GlFont::I().Text("%d", track.first).Draw(c[0], c[1]);
+            }
+          } else {
+            Eigen::Vector2d c1 = track.second.at(i - 1);
+            Eigen::Vector2d c2 = track.second.at(i);
+
+            // angle in degrees
+            double angle = points2Angle(c1, c2);
+
+            int r, g, b;
+
+            angle2rgb(angle, r, b, g);
+            glColor3f(r / 255.0, g / 255.0, b / 255.0);
+            pangolin::glDrawCirclePerimeter(c[0], c[1], 2.0);
+          }
+        }
+      }
+    }
+    if (show_tail_line) {
+      glLineWidth(1.0);
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+      for (const auto& track : visualisationTracks) {
+        if (track.second.size() > 1) {
+          glColor3f(1.0, 0.0, 0.0);
+          pangolin::glDrawCirclePerimeter(track.second.at(0)[0],
+                                          track.second.at(0)[1], 1.0);
+          if (show_ids) {
+            pangolin::GlFont::I()
+                .Text("%d", track.first)
+                .Draw(track.second.at(0)[0], track.second.at(0)[1]);
+          }
+          for (size_t i = 1; i < track.second.size(); i++) {
+            Eigen::Vector2d c1 = track.second.at(i - 1);
+            Eigen::Vector2d c2 = track.second.at(i);
+
+            // angle in degrees
+            double angle = points2Angle(c1, c2);
+
+            int r, g, b;
+
+            angle2rgb(angle, r, b, g);
+            glColor3f(r / 255.0, g / 255.0, b / 255.0);
+            glLineWidth(2.0);
+            pangolin::glDrawLine(c1, c2);
+          }
+        }
+      }
+    }
+    glLineWidth(1.0);
+    pangolin::GlFont::I()
+        .Text("Tracking %d corners", visualisationTracks.size())
+        .Draw(5, text_row);
+    text_row += 20;
+  }
   if (show_detected) {
     glLineWidth(1.0);
     glColor3f(1.0, 0.0, 0.0);  // red
@@ -433,7 +516,7 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
         static_cast<FrameId>(view_id == 0 ? show_frame2 : show_frame1);
     auto o_cam_id = static_cast<CamId>(view_id == 0 ? show_cam2 : show_cam1);
 
-    FrameCamId o_fcid(o_frame_id, o_cam_id);
+    FrameCamId o_fcid(o_frame_id - 1, o_cam_id);
 
     int idx = -1;
 
@@ -507,112 +590,6 @@ void draw_image_overlay(pangolin::View& v, size_t view_id) {
             .Text("Detected %d inliers", it->second.inliers.size())
             .Draw(5, text_row);
         text_row += 20;
-      }
-    }
-  }
-
-  if (show_reprojections) {
-    if (image_projections.count(fcid) > 0) {
-      glLineWidth(1.0);
-      glColor3f(1.0, 0.0, 0.0);  // red
-      glEnable(GL_BLEND);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-      const size_t num_points = image_projections.at(fcid).obs.size();
-      double error_sum = 0;
-      size_t num_outliers = 0;
-
-      // count up and draw all inlier projections
-      for (const auto& lm_proj : image_projections.at(fcid).obs) {
-        error_sum += lm_proj->reprojection_error;
-
-        if (lm_proj->outlier_flags != OutlierNone) {
-          // outlier point
-          glColor3f(1.0, 0.0, 0.0);  // red
-          ++num_outliers;
-        } else if (lm_proj->reprojection_error >
-                   reprojection_error_huber_pixel) {
-          // close to outlier point
-          glColor3f(1.0, 0.5, 0.0);  // orange
-        } else {
-          // clear inlier point
-          glColor3f(1.0, 1.0, 0.0);  // yellow
-        }
-        pangolin::glDrawCirclePerimeter(lm_proj->point_reprojected, 3.0);
-        pangolin::glDrawLine(lm_proj->point_measured,
-                             lm_proj->point_reprojected);
-      }
-
-      // only draw outlier projections
-      if (show_outlier_observations) {
-        glColor3f(1.0, 0.0, 0.0);  // red
-        for (const auto& lm_proj : image_projections.at(fcid).outlier_obs) {
-          pangolin::glDrawCirclePerimeter(lm_proj->point_reprojected, 3.0);
-          pangolin::glDrawLine(lm_proj->point_measured,
-                               lm_proj->point_reprojected);
-        }
-      }
-
-      glColor3f(1.0, 0.0, 0.0);  // red
-      pangolin::GlFont::I()
-          .Text("Average repr. error (%u points, %u new outliers): %.2f",
-                num_points, num_outliers, error_sum / num_points)
-          .Draw(5, text_row);
-      text_row += 20;
-    }
-  }
-
-  if (show_epipolar) {
-    glLineWidth(1.0);
-    glColor3f(0.0, 1.0, 1.0);  // bright teal
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    auto o_frame_id =
-        static_cast<FrameId>(view_id == 0 ? show_frame2 : show_frame1);
-    auto o_cam_id = static_cast<CamId>(view_id == 0 ? show_cam2 : show_cam1);
-
-    FrameCamId o_fcid(o_frame_id, o_cam_id);
-
-    int idx = -1;
-
-    auto it = feature_matches.find(std::make_pair(fcid, o_fcid));
-
-    if (it != feature_matches.end()) {
-      idx = 0;
-    } else {
-      it = feature_matches.find(std::make_pair(o_fcid, fcid));
-      if (it != feature_matches.end()) {
-        idx = 1;
-      }
-    }
-
-    if (idx >= 0 && it->second.inliers.size() > 20) {
-      Sophus::SE3d T_this_other =
-          idx == 0 ? it->second.T_i_j : it->second.T_i_j.inverse();
-
-      Eigen::Vector3d p0 = T_this_other.translation().normalized();
-
-      int line_id = 0;
-      for (double i = -M_PI_2 / 2; i <= M_PI_2 / 2; i += 0.05) {
-        Eigen::Vector3d p1(0, sin(i), cos(i));
-
-        if (idx == 0) p1 = it->second.T_i_j * p1;
-
-        p1.normalize();
-
-        std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
-            line;
-        for (double j = -1; j <= 1; j += 0.001) {
-          line.emplace_back(calib_cam.intrinsics[cam_id]->project(
-              p0 * j + (1 - std::abs(j)) * p1));
-        }
-
-        Eigen::Vector2d c = calib_cam.intrinsics[cam_id]->project(p1);
-        pangolin::GlFont::I().Text("%d", line_id).Draw(c[0], c[1]);
-        line_id++;
-
-        pangolin::glDrawLineStrip(line);
       }
     }
   }
@@ -804,6 +781,7 @@ void initial_step() {
 
   cameras[fcidl].T_w_c = current_pose;
   cameras[fcidr].T_w_c = current_pose * T_0_1;
+  poses.emplace_back(current_pose);
   initialize_map(landmarks, trackedPoints, next_landmark_id, md_stereo, kdl,
                  kdr, fcidl, fcidr, calib_cam, current_pose);
   update_patches(patches, trackedPoints, kdl.corners, imgl);
@@ -830,18 +808,18 @@ void stereo_tracking() {
 
   /// Find new keypoints and track trackedPoints along
   // in md are the featureID trackID pairs from trackedPOints
+  /*
+    for (auto i = 0; i < static_cast<int>(patches.patchHasKeypoints.size());
+         i++) {
+      const auto& patch = patches.patchHasKeypoints[i];
+      const auto& patchID = patches.patchIDs[i];
 
-  for (auto i = 0; i < static_cast<int>(patches.patchHasKeypoints.size());
-       i++) {
-    const auto& patch = patches.patchHasKeypoints[i];
-    const auto& patchID = patches.patchIDs[i];
+      if (!patch) {
+        find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
+      }
+    }*/
 
-    if (!patch) {
-      find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
-    }
-  }
-
-  // find_keypoints_in_all_regions(imgl, kdl.corners, 1);
+  find_keypoints_in_all_regions(imgl, kdl.corners, 15);
   match_stereo_with_opticalflow(trackedPoints,
                                 feature_corners.at(fcidl).corners, kdr.corners,
                                 kdl.corners, imgl, imgr, md_stereo, md);
@@ -851,17 +829,13 @@ void stereo_tracking() {
   computeAngles(imgr, kdr, rotate_features);
 
   md_stereo.T_i_j = T_0_1;
-  /*
-    Eigen::Matrix3d E;
-    computeEssential(T_0_1, E);
 
-    matchDescriptors(kdl.corner_descriptors, kdr.corner_descriptors,
-                     md_stereo.matches, feature_match_max_dist,
-                     feature_match_test_next_best);
+  Eigen::Matrix3d E;
+  computeEssential(T_0_1, E);
 
-    findInliersEssential(kdl, kdr, calib_cam.intrinsics[0],
-                         calib_cam.intrinsics[1], E, 1e-3, md_stereo);
-  */
+  findInliersEssential(kdl, kdr, calib_cam.intrinsics[0],
+                       calib_cam.intrinsics[1], E, 1e-3, md_stereo);
+
   std::cout << "KF Found " << md_stereo.inliers.size() << " stereo-matches."
             << std::endl;
 
@@ -926,6 +900,10 @@ void frame_to_frame_tracking() {
   }
   current_pose = md.T_w_c;
   update_patches(patches, trackedPoints, kd_next.corners, img_next);
+
+  updateVisualisationTracks(trackedPoints, sizeOfVisualisation, kd_next.corners,
+                            visualisationTracks);
+
   if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
       !opt_finished) {
     take_keyframe = true;
@@ -960,6 +938,7 @@ bool next_step() {
     }
   }
   frame_to_frame_tracking();
+  poses.emplace_back(current_pose);
   return true;
 }
 
