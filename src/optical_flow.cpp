@@ -216,6 +216,8 @@ Button next_step_btn("ui.next_step", &next_step);
 /// Global variables for optical flow
 ///////////////////////////////////////////////////////////////////////////////
 TrackedPoints trackedPoints;
+
+Patches patches{8};
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
@@ -804,6 +806,7 @@ void initial_step() {
   cameras[fcidr].T_w_c = current_pose * T_0_1;
   initialize_map(landmarks, trackedPoints, next_landmark_id, md_stereo, kdl,
                  kdr, fcidl, fcidr, calib_cam, current_pose);
+  update_patches(patches, trackedPoints, kdl.corners, imgl);
   // update image views
   change_display_to_image(fcidl);
   change_display_to_image(fcidr);
@@ -827,7 +830,18 @@ void stereo_tracking() {
 
   /// Find new keypoints and track trackedPoints along
   // in md are the featureID trackID pairs from trackedPOints
-  find_keypoints_in_all_regions(imgl, kdl.corners, 1);
+
+  for (auto i = 0; i < static_cast<int>(patches.patchHasKeypoints.size());
+       i++) {
+    const auto& patch = patches.patchHasKeypoints[i];
+    const auto& patchID = patches.patchIDs[i];
+
+    if (!patch) {
+      find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
+    }
+  }
+
+  // find_keypoints_in_all_regions(imgl, kdl.corners, 1);
   match_stereo_with_opticalflow(trackedPoints,
                                 feature_corners.at(fcidl).corners, kdr.corners,
                                 kdl.corners, imgl, imgr, md_stereo, md);
@@ -874,7 +888,7 @@ void stereo_tracking() {
   optimize();
 
   current_pose = cameras[fcidl].T_w_c;
-
+  update_patches(patches, trackedPoints, kdl.corners, imgl);
   // update image views
   change_display_to_image(fcidl);
   change_display_to_image(fcidr);
@@ -911,7 +925,7 @@ void frame_to_frame_tracking() {
     trackedPoints.emplace(inlier_match);
   }
   current_pose = md.T_w_c;
-
+  update_patches(patches, trackedPoints, kd_next.corners, img_next);
   if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
       !opt_finished) {
     take_keyframe = true;
@@ -936,7 +950,7 @@ void frame_to_frame_tracking() {
 // until it returns false for automatic execution.
 
 bool next_step() {
-  if (current_frame >= int(images.size()) / NUM_CAMS) return false;
+  if (current_frame + 1 >= int(images.size()) / NUM_CAMS) return false;
 
   if (take_keyframe) {
     if (current_frame == 0) {

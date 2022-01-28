@@ -32,6 +32,8 @@ void find_keypoints_in_region(const pangolin::ManagedImage<uint8_t>& img_raw,
                               KeypointsPositions& kd, const PatchID& patchID,
                               const int num_features) {
   cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
+  row_size = image.rows / nr_it;
+  col_size = image.cols / nr_it;
   //////////////////////////////////////////////////////
   const auto start_row = patchID.x * row_size;
   const auto end_row = (patchID.x + 1) * row_size;
@@ -99,7 +101,7 @@ void update_patches(Patches& patches, const TrackedPoints& trackedPoints,
   for (const auto& trackedPoint : trackedPoints) {
     const auto& featureID = trackedPoint.first;
     const auto& position = kd.at(featureID);
-    cv::Point2d point;
+    cv::Point2f point;
     point.x = position.x();
     point.y = position.y();
     const auto& patchID = find_patchID(img_raw, point);
@@ -148,7 +150,7 @@ void match_initial_stereo_with_opticalflow(
        i < static_cast<int>(all_new_left_keypoints_positions.size()); i++) {
     if (status_forward[i] && status_backward[i] &&
         check_threshold(left_keypoints_positions[i],
-                        all_new_left_keypoints_positions[i], 1)) {
+                        all_new_left_keypoints_positions[i], 2)) {
       Eigen::Vector2d right_position;
       right_position.x() = all_right_keypoints_positions[i].x;
       right_position.y() = all_right_keypoints_positions[i].y;
@@ -262,7 +264,7 @@ void match_stereo_with_opticalflow(
        i++) {
     if (status_forward[i] && status_backward[i] &&
         check_threshold(left_keypoints_positions[i],
-                        all_new_left_keypoints_positions[i], 1)) {
+                        all_new_left_keypoints_positions[i], 2)) {
       Eigen::Vector2d right_position;
       right_position.x() = all_right_keypoints_positions[i].x;
       right_position.y() = all_right_keypoints_positions[i].y;
@@ -285,7 +287,7 @@ void match_stereo_with_opticalflow(
        i < static_cast<int>(all_new_left_keypoints_positions.size()); i++) {
     if (status_forward[i] && status_backward[i] &&
         check_threshold(left_keypoints_positions[i],
-                        all_new_left_keypoints_positions[i], 1)) {
+                        all_new_left_keypoints_positions[i], 2)) {
       Eigen::Vector2d right_position;
       right_position.x() = all_right_keypoints_positions[i].x;
       right_position.y() = all_right_keypoints_positions[i].y;
@@ -437,7 +439,7 @@ void match_with_opticalflow(
        i < static_cast<int>(all_new_current_keypoints_positions.size()); i++) {
     if (status_forward[i] && status_backward[i] &&
         check_threshold(current_keypoints_positions[i],
-                        all_new_current_keypoints_positions[i], 1)) {
+                        all_new_current_keypoints_positions[i], 2)) {
       Eigen::Vector2d next_position;
       next_position.x() = all_next_keypoints_positions[i].x;
       next_position.y() = all_next_keypoints_positions[i].y;
