@@ -25,8 +25,8 @@ namespace visnav {
 
 int row_size;
 int col_size;
-constexpr int rows = 2;
-constexpr int cols = 2;
+constexpr int rows = 16;
+constexpr int cols = 16;
 
 void find_keypoints_in_region(const pangolin::ManagedImage<uint8_t>& img_raw,
                               KeypointsPositions& kd, const PatchID& patchID,

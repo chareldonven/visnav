@@ -223,7 +223,7 @@ Button next_step_btn("ui.next_step", &next_step);
 /// Global variables for optical flow
 ///////////////////////////////////////////////////////////////////////////////
 TrackedPoints trackedPoints;
-constexpr size_t patches_size = 2;
+constexpr size_t patches_size = 16;
 Patches patches{patches_size};
 std::vector<Sophus::SE3d> poses;
 ///////////////////////////////////////////////////////////////////////////////
@@ -818,7 +818,7 @@ void stereo_tracking() {
     const auto& patchID = patches.patchIDs[i];
 
     if (!patch) {
-      find_keypoints_in_region(imgl, kdl.corners, patchID, 100);
+      find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
     }
   }
 
@@ -909,7 +909,7 @@ void frame_to_frame_tracking() {
   updateVisualisationTracks(trackedPoints, sizeOfVisualisation, kd_next.corners,
                             visualisationTracks);
 
-  if (int(md.inliers.size()) < 10 && !opt_running && !opt_finished) {
+  if (int(md.inliers.size()) < 15 * 8 * 8 && !opt_running && !opt_finished) {
     take_keyframe = true;
   }
 
