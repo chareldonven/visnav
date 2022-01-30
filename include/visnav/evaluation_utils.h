@@ -22,7 +22,7 @@ void save_trajectory(const std::vector<Sophus::SE3d>& poses,
     os << std::scientific << std::setprecision(18) << timestamps[i] << " "
        << pose.translation().x() << " " << pose.translation().y() << " "
        << pose.translation().z() << " " << pose.unit_quaternion().x() << " "
-       << pose.unit_quaternion().y() << " " << pose.unit_quaternion().z()
+       << pose.unit_quaternion().y() << " " << pose.unit_quaternion().z() << " "
        << pose.unit_quaternion().w() << std::endl;
   }
 

@@ -58,7 +58,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/map_utils.h>
 #include <visnav/matching_utils.h>
 #include <visnav/vo_utils.h>
-
+#include <visnav/evaluation_utils.h>
 #include <visnav/gui_helper.h>
 #include <visnav/tracks.h>
 
@@ -212,7 +212,7 @@ pangolin::Var<bool> continue_next("ui.continue_next", false, true);
 using Button = pangolin::Var<std::function<void(void)>>;
 
 Button next_step_btn("ui.next_step", &next_step);
-
+std::vector<Sophus::SE3d> poses;
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
@@ -369,7 +369,7 @@ int main(int argc, char** argv) {
       // nop
     }
   }
-
+  save_trajectory(poses, timestamps, "traj_odom.txt");
   return 0;
 }
 
@@ -838,7 +838,7 @@ bool next_step() {
                     reprojection_error_pnp_inlier_threshold_pixel, md);
 
     current_pose = md.T_w_c;
-
+    poses.emplace_back(current_pose);
     cameras[fcidl].T_w_c = current_pose;
     cameras[fcidr].T_w_c = current_pose * T_0_1;
 
@@ -893,7 +893,7 @@ bool next_step() {
                     reprojection_error_pnp_inlier_threshold_pixel, md);
 
     current_pose = md.T_w_c;
-
+    poses.emplace_back(current_pose);
     if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
         !opt_finished) {
       take_keyframe = true;
