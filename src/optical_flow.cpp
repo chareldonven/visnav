@@ -207,7 +207,12 @@ pangolin::Var<double> reprojection_error_huber_pixel("hidden.ba_huber_width",
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI buttons
 ///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
+pangolin::Var<bool> show_tail_points("ui.show_tail_points", false, true);
+pangolin::Var<bool> show_tail_line("ui.show_tail_line", true, true);
+
+///////////////////////////////////////////////////////////////////////////////
 // if you enable this, next_step is called repeatedly until completion
 pangolin::Var<bool> continue_next("ui.continue_next", false, true);
 
@@ -218,15 +223,13 @@ Button next_step_btn("ui.next_step", &next_step);
 /// Global variables for optical flow
 ///////////////////////////////////////////////////////////////////////////////
 TrackedPoints trackedPoints;
-
-Patches patches{8};
+constexpr size_t patches_size = 8;
+Patches patches{patches_size};
 std::vector<Sophus::SE3d> poses;
 ///////////////////////////////////////////////////////////////////////////////
 /// Variables for visualisation
 ///////////////////////////////////////////////////////////////////////////////
 
-pangolin::Var<bool> show_tail_points("ui.show_tail_points", false, true);
-pangolin::Var<bool> show_tail_line("ui.show_tail_line", true, true);
 VisualisationTracks visualisationTracks;
 constexpr int sizeOfVisualisation = 5;
 ///////////////////////////////////////////////////////////////////////////////
@@ -808,18 +811,18 @@ void stereo_tracking() {
 
   /// Find new keypoints and track trackedPoints along
   // in md are the featureID trackID pairs from trackedPOints
-  /*
-    for (auto i = 0; i < static_cast<int>(patches.patchHasKeypoints.size());
-         i++) {
-      const auto& patch = patches.patchHasKeypoints[i];
-      const auto& patchID = patches.patchIDs[i];
 
-      if (!patch) {
-        find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
-      }
-    }*/
+  for (auto i = 0; i < static_cast<int>(patches.patchHasKeypoints.size());
+       i++) {
+    const auto& patch = patches.patchHasKeypoints[i];
+    const auto& patchID = patches.patchIDs[i];
 
-  find_keypoints_in_all_regions(imgl, kdl.corners, 15);
+    if (!patch) {
+      find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
+    }
+  }
+
+  // find_keypoints_in_all_regions(imgl, kdl.corners, 15);
   match_stereo_with_opticalflow(trackedPoints,
                                 feature_corners.at(fcidl).corners, kdr.corners,
                                 kdl.corners, imgl, imgr, md_stereo, md);
@@ -859,9 +862,10 @@ void stereo_tracking() {
 
   remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
                        kf_frames);
-  optimize();
+  // optimize();
 
   current_pose = cameras[fcidl].T_w_c;
+  patches = Patches(patches_size);
   update_patches(patches, trackedPoints, kdl.corners, imgl);
   // update image views
   change_display_to_image(fcidl);
@@ -899,6 +903,7 @@ void frame_to_frame_tracking() {
     trackedPoints.emplace(inlier_match);
   }
   current_pose = md.T_w_c;
+  patches = Patches(patches_size);
   update_patches(patches, trackedPoints, kd_next.corners, img_next);
 
   updateVisualisationTracks(trackedPoints, sizeOfVisualisation, kd_next.corners,
