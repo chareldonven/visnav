@@ -25,23 +25,24 @@ namespace visnav {
 
 int row_size;
 int col_size;
-constexpr int rows = 8;
-constexpr int cols = 8;
-constexpr int nr_it = 8;
+constexpr int rows = 2;
+constexpr int cols = 2;
+
 void find_keypoints_in_region(const pangolin::ManagedImage<uint8_t>& img_raw,
                               KeypointsPositions& kd, const PatchID& patchID,
                               const int num_features) {
   cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
-  row_size = image.rows / nr_it;
-  col_size = image.cols / nr_it;
+
   //////////////////////////////////////////////////////
   const auto start_row = patchID.x * row_size;
   const auto end_row = (patchID.x + 1) * row_size;
   const auto row_range = cv::Range(start_row, end_row);
+
   ///////////////////////////////////////////////////////
   const auto start_col = patchID.y * col_size;
   const auto end_col = (patchID.y + 1) * col_size;
   const auto col_range = cv::Range(start_col, end_col);
+
   /////////////////////////////////////////////////////
   cv::Mat patch(image, row_range, col_range);
 
@@ -64,10 +65,11 @@ void find_keypoints_in_all_regions(
     const int num_features) {
   cv::Mat image(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
 
-  row_size = image.rows / nr_it;
-  col_size = image.cols / nr_it;
-  for (auto i = 0; i < nr_it; i++) {
-    for (auto j = 0; j < nr_it; j++) {
+  row_size = image.rows / rows;
+  col_size = image.cols / cols;
+
+  for (auto i = 0; i < rows; i++) {
+    for (auto j = 0; j < cols; j++) {
       PatchID patchID;
       patchID.x = i;
       patchID.y = j;
@@ -91,8 +93,9 @@ PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
   const auto& y = point.y;
 
   PatchID patchID;
-  patchID.x = std::floor(x / row_size);
-  patchID.y = std::floor(y / col_size);
+  patchID.x = std::floor(x / col_size);
+
+  patchID.y = std::floor(y / row_size);
   return patchID;
 }
 void update_patches(Patches& patches, const TrackedPoints& trackedPoints,
@@ -106,6 +109,7 @@ void update_patches(Patches& patches, const TrackedPoints& trackedPoints,
     point.y = position.y();
     const auto& patchID = find_patchID(img_raw, point);
     const auto& index = patchID.y * rows + patchID.x;
+
     patches.patchHasKeypoints.at(index) = true;
   }
 }

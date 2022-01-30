@@ -223,7 +223,7 @@ Button next_step_btn("ui.next_step", &next_step);
 /// Global variables for optical flow
 ///////////////////////////////////////////////////////////////////////////////
 TrackedPoints trackedPoints;
-constexpr size_t patches_size = 8;
+constexpr size_t patches_size = 2;
 Patches patches{patches_size};
 std::vector<Sophus::SE3d> poses;
 ///////////////////////////////////////////////////////////////////////////////
@@ -769,7 +769,7 @@ void initial_step() {
   pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
   pangolin::ManagedImage<uint8_t> imgr = pangolin::LoadImage(images[fcidr]);
 
-  find_keypoints_in_all_regions(imgl, kdl.corners, 10);
+  find_keypoints_in_all_regions(imgl, kdl.corners, 100);
   computeAngles(imgl, kdl, rotate_features);
   computeDescriptors(imgl, kdl);
   MatchData md_stereo;
@@ -818,7 +818,7 @@ void stereo_tracking() {
     const auto& patchID = patches.patchIDs[i];
 
     if (!patch) {
-      find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
+      find_keypoints_in_region(imgl, kdl.corners, patchID, 100);
     }
   }
 
@@ -909,8 +909,7 @@ void frame_to_frame_tracking() {
   updateVisualisationTracks(trackedPoints, sizeOfVisualisation, kd_next.corners,
                             visualisationTracks);
 
-  if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
-      !opt_finished) {
+  if (int(md.inliers.size()) < 10 && !opt_running && !opt_finished) {
     take_keyframe = true;
   }
 
