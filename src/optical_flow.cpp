@@ -226,6 +226,10 @@ TrackedPoints trackedPoints;
 constexpr size_t patches_size = 16;
 Patches patches{patches_size};
 std::vector<Sophus::SE3d> poses;
+constexpr int min_num_features = 15 * 8 * 8;
+constexpr bool avoid_duplicates = true;
+constexpr int num_features = 15;
+constexpr int init_num_features = 100;
 ///////////////////////////////////////////////////////////////////////////////
 /// Variables for visualisation
 ///////////////////////////////////////////////////////////////////////////////
@@ -769,9 +773,11 @@ void initial_step() {
   pangolin::ManagedImage<uint8_t> imgl = pangolin::LoadImage(images[fcidl]);
   pangolin::ManagedImage<uint8_t> imgr = pangolin::LoadImage(images[fcidr]);
 
-  find_keypoints_in_all_regions(imgl, kdl.corners, 100);
+  // look in all patches for features for the first step.
+  find_keypoints_in_all_regions(imgl, kdl.corners, init_num_features);
   computeAngles(imgl, kdl, rotate_features);
   computeDescriptors(imgl, kdl);
+
   MatchData md_stereo;
   match_initial_stereo_with_opticalflow(kdl.corners, kdr.corners, imgl, imgr,
                                         md_stereo);
@@ -812,25 +818,35 @@ void stereo_tracking() {
   /// Find new keypoints and track trackedPoints along
   // in md are the featureID trackID pairs from trackedPOints
 
-  for (auto i = 0; i < static_cast<int>(patches.patchHasKeypoints.size());
-       i++) {
-    const auto& patch = patches.patchHasKeypoints[i];
-    const auto& patchID = patches.patchIDs[i];
+  // if avoid duplicates, we only look for new features in patches where no
+  // point was found before.
+  if (avoid_duplicates) {
+    for (auto i = 0; i < static_cast<int>(patches.patchHasKeypoints.size());
+         i++) {
+      const auto& patch = patches.patchHasKeypoints[i];
+      const auto& patchID = patches.patchIDs[i];
 
-    if (!patch) {
-      find_keypoints_in_region(imgl, kdl.corners, patchID, 15);
+      if (!patch) {
+        find_keypoints_in_region(imgl, kdl.corners, patchID, num_features);
+      }
     }
   }
+  // in this case we look in every patch for new points
+  else {
+    find_keypoints_in_all_regions(imgl, kdl.corners, num_features);
+  }
 
-  // find_keypoints_in_all_regions(imgl, kdl.corners, 15);
+  // get stereo matches.
   match_stereo_with_opticalflow(trackedPoints,
                                 feature_corners.at(fcidl).corners, kdr.corners,
                                 kdl.corners, imgl, imgr, md_stereo, md);
 
+  // those angles are only for the frameword and is not used in optical flow
   computeAngles(imgl, kdl, rotate_features);
 
   computeAngles(imgr, kdr, rotate_features);
 
+  // update pose no update to odometry
   md_stereo.T_i_j = T_0_1;
 
   Eigen::Matrix3d E;
@@ -855,6 +871,9 @@ void stereo_tracking() {
 
   cameras[fcidl].T_w_c = current_pose;
   cameras[fcidr].T_w_c = current_pose * T_0_1;
+
+  // add new landmarks similar fromm odometry and update the TrackIds of the
+  // trackedPoints.
   trackedPoints.clear();
   add_new_landmarks_update_trackedPoints(fcidl, fcidr, kdl, kdr, calib_cam,
                                          md_stereo, md, landmarks,
@@ -865,6 +884,8 @@ void stereo_tracking() {
   optimize();
 
   current_pose = cameras[fcidl].T_w_c;
+
+  // update the patches with all the new points
   patches = Patches(patches_size);
   update_patches(patches, trackedPoints, kdl.corners, imgl);
   // update image views
@@ -878,6 +899,7 @@ void frame_to_frame_tracking() {
   const FrameCamId fcid_current(current_frame, 0),
       fcid_next(current_frame + 1, 0);
 
+  // images for this step
   const pangolin::ManagedImage<uint8_t> img_current =
       pangolin::LoadImage(images[fcid_current]);
   const pangolin::ManagedImage<uint8_t> img_next =
@@ -890,26 +912,35 @@ void frame_to_frame_tracking() {
   // track them into kd_next
   // in md the inliers feature_next, trackID
   std::vector<TrackId> trackIDs;
+
   match_with_opticalflow(kd_current.corners, kd_next.corners, img_current,
                          img_next, trackedPoints, trackIDs, md);
+  // compute angles is not used for our project, but is useful for the existing
+  // framwork.
   computeAngles(img_next, kd_next, rotate_features);
 
   std::cout << "Found " << md.matches.size() << " matches." << std::endl;
 
   localize_camera(current_pose, calib_cam.intrinsics[0], kd_next, landmarks,
                   reprojection_error_pnp_inlier_threshold_pixel, md);
+  // update the tracked points
   trackedPoints.clear();
   for (const auto& inlier_match : md.inliers) {
     trackedPoints.emplace(inlier_match);
   }
+
   current_pose = md.T_w_c;
+
+  // set update the patches with new points
   patches = Patches(patches_size);
   update_patches(patches, trackedPoints, kd_next.corners, img_next);
 
   updateVisualisationTracks(trackedPoints, sizeOfVisualisation, kd_next.corners,
                             visualisationTracks);
 
-  if (int(md.inliers.size()) < 15 * 8 * 8 && !opt_running && !opt_finished) {
+  // check if a new keyframe is needed (stereo matching)
+  if (int(md.inliers.size()) < min_num_features && !opt_running &&
+      !opt_finished) {
     take_keyframe = true;
   }
 

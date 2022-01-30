@@ -8,7 +8,7 @@
 #include <iomanip>
 
 namespace visnav {
-
+// used for evaluation
 void save_trajectory(const std::vector<Sophus::SE3d>& poses,
                      const std::vector<int64_t>& timestamps,
                      const std::string& filename) {

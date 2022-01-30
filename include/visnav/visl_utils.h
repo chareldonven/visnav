@@ -9,14 +9,20 @@
 
 namespace visnav {
 
+// update visualisation. If the track is longer then tracklength, old points are
+// removed.
 void updateVisualisationTracks(const TrackedPoints& trackedPoints,
                                const size_t tracklength,
                                const KeypointsPositions& kd,
                                VisualisationTracks& visualisationTracks) {
   VisualisationTracks newVisualisationTracks;
+
   for (const auto& trackedPoint : trackedPoints) {
+    // get all pointstrack of the current point
     PointsOfTrack pointsOfTrack = visualisationTracks[trackedPoint.second];
+    // insert newest point
     pointsOfTrack.insert(pointsOfTrack.begin(), kd[trackedPoint.first]);
+    // remove old point
     if (pointsOfTrack.size() > tracklength) pointsOfTrack.pop_back();
     newVisualisationTracks[trackedPoint.second] = pointsOfTrack;
   }

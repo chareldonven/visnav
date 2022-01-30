@@ -28,6 +28,8 @@ int col_size;
 constexpr int rows = 16;
 constexpr int cols = 16;
 
+constexpr int matching_threshold = 2;
+
 void find_keypoints_in_region(const pangolin::ManagedImage<uint8_t>& img_raw,
                               KeypointsPositions& kd, const PatchID& patchID,
                               const int num_features) {
@@ -60,6 +62,7 @@ void find_keypoints_in_region(const pangolin::ManagedImage<uint8_t>& img_raw,
     }
   }
 }
+
 void find_keypoints_in_all_regions(
     const pangolin::ManagedImage<uint8_t>& img_raw, KeypointsPositions& kd,
     const int num_features) {
@@ -78,6 +81,7 @@ void find_keypoints_in_all_regions(
   }
 }
 
+// checks if a patch has to little keypoints
 bool should_track_into_stereo(const Patches& patches) {
   bool result = true;
   for (const auto& patch : patches.patchHasKeypoints) {
@@ -85,6 +89,7 @@ bool should_track_into_stereo(const Patches& patches) {
   }
   return !result;
 }
+
 PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
                      const cv::Point2f& point) {
   cv::Mat img(img_raw.h, img_raw.w, CV_8U, img_raw.ptr);
@@ -98,6 +103,8 @@ PatchID find_patchID(const pangolin::ManagedImage<uint8_t>& img_raw,
   patchID.y = std::floor(y / row_size);
   return patchID;
 }
+
+// This updates if a patch has now a point init.
 void update_patches(Patches& patches, const TrackedPoints& trackedPoints,
                     const KeypointsPositions& kd,
                     const pangolin::ManagedImage<uint8_t>& img_raw) {
@@ -107,6 +114,7 @@ void update_patches(Patches& patches, const TrackedPoints& trackedPoints,
     cv::Point2f point;
     point.x = position.x();
     point.y = position.y();
+
     const auto& patchID = find_patchID(img_raw, point);
     const auto& index = patchID.y * rows + patchID.x;
 
@@ -119,7 +127,9 @@ bool check_threshold(const cv::Point2f& position0, const cv::Point2f& position1,
   double norm = cv::norm(cv::Mat(position0), cv::Mat(position1));
   return norm < threshold;
 }
-
+// This matches the keypoints of the first stereo pair. We match from the left
+// to the right (forward) and from the right to the left (backward). The
+// overlapping of these two gives the new stereo matches
 void match_initial_stereo_with_opticalflow(
     const KeypointsPositions& kdl, KeypointsPositions& kdr,
     const pangolin::ManagedImage<uint8_t>& img_raw_l,
@@ -211,6 +221,8 @@ void initialize_map(Landmarks& landmarks, TrackedPoints& trackedPoints,
   }
 }
 
+// here we match from the left to the right (forward) and from the right to the
+// left (backward). The overlapping of these two gives the new stereo matches
 void match_stereo_with_opticalflow(
     const TrackedPoints& trackedPoints, const KeypointsPositions& old_kdl,
     KeypointsPositions& kdr, KeypointsPositions& new_kdl,
@@ -247,6 +259,7 @@ void match_stereo_with_opticalflow(
   std::vector<cv::Point2f> all_right_keypoints_positions;
   all_right_keypoints_positions.reserve(left_keypoints_positions.size());
 
+  // forward
   std::vector<uchar> status_forward;
   std::vector<float> err_forward;
 
@@ -254,6 +267,7 @@ void match_stereo_with_opticalflow(
                        all_right_keypoints_positions, status_forward,
                        err_forward);
 
+  // backward
   std::vector<uchar> status_backward;
   std::vector<float> err_backward;
   std::vector<cv::Point2f> all_new_left_keypoints_positions;
@@ -313,6 +327,7 @@ void match_stereo_with_opticalflow(
     }
   }
 }
+
 void add_new_landmarks_update_trackedPoints(
     const FrameCamId fcidl, const FrameCamId fcidr, const KeypointsData& kdl,
     const KeypointsData& kdr, const Calibration& calib_cam,
@@ -402,6 +417,9 @@ void add_new_landmarks_update_trackedPoints(
     trackedPoints[other_stereo_points[i].first] = new_trackID;
   }
 }
+// In this function we want to find matches using optical flow. For this we
+// match the known feature corners to the next image. Then we match them also in
+// the other direction. All matches found in both are taken.
 void match_with_opticalflow(
     const KeypointsPositions& kd_current, KeypointsPositions& kd_next,
     const pangolin::ManagedImage<uint8_t>& img_raw_current,
@@ -425,13 +443,15 @@ void match_with_opticalflow(
 
   std::vector<cv::Point2f> all_next_keypoints_positions;
 
+  // forward match
   std::vector<uchar> status_forward;
   std::vector<float> err_forward;
 
+  // opencv function to calculate optical flow
   calcOpticalFlowPyrLK(image_current, image_next, current_keypoints_positions,
                        all_next_keypoints_positions, status_forward,
                        err_forward);
-
+  // backward match
   std::vector<uchar> status_backward;
   std::vector<float> err_backward;
   std::vector<cv::Point2f> all_new_current_keypoints_positions;
@@ -441,9 +461,12 @@ void match_with_opticalflow(
 
   for (auto i = 0;
        i < static_cast<int>(all_new_current_keypoints_positions.size()); i++) {
+    // take only matches found in the froward and the backward match and in a
+    // given theshold. Add the result to the LandmarkMatchData (md)
     if (status_forward[i] && status_backward[i] &&
         check_threshold(current_keypoints_positions[i],
-                        all_new_current_keypoints_positions[i], 2)) {
+                        all_new_current_keypoints_positions[i],
+                        matching_threshold)) {
       Eigen::Vector2d next_position;
       next_position.x() = all_next_keypoints_positions[i].x;
       next_position.y() = all_next_keypoints_positions[i].y;
