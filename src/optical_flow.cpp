@@ -862,7 +862,7 @@ void stereo_tracking() {
 
   remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
                        kf_frames);
-  // optimize();
+  optimize();
 
   current_pose = cameras[fcidl].T_w_c;
   patches = Patches(patches_size);
