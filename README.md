@@ -18,3 +18,11 @@ Note also the different licenses of thirdparty submodules.
 
 
 You can find [setup instructions here.](wiki/Setup.md)
+
+### Instructions to run the Opticalflow programm
+The programm needs a camera calibration and a dataset. (Same as in odometry)
+
+The best way to add the camera calibration is to run the cameracalibration and save it.
+
+The it can be executed like this:
+./build/Opticalflow --dataset-path data/V1_01_easy/mav0/
