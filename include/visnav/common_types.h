@@ -310,6 +310,39 @@ using BowDBInverseIndex =
 /// Inverse index used in Bow database. Suited for concurrent computation.
 using BowDBInverseIndexConcurrent = tbb::concurrent_unordered_map<
     WordId, tbb::concurrent_vector<std::pair<FrameCamId, WordValue>>>;
+////////////////////////////////////////////////////////////////////////////////////////
+
+/// Used for Optical Flow
+using TrackedPoints = std::map<FeatureId, TrackId>;
+using KeypointsPositions =
+    std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>;
+struct PatchID {
+  unsigned int x;
+  unsigned int y;
+};
+struct Patches {
+  // std::vector<std::vector<TrackedPoints>> patches;
+
+  std::vector<bool> patchHasKeypoints;
+  std::vector<PatchID> patchIDs;
+  Patches(const int size) {
+    patchHasKeypoints.resize(size * size);
+    patchIDs.resize(size * size);
+    for (auto i = 0; i < size; i++) {
+      for (auto j = 0; j < size; j++) {
+        PatchID patchID;
+        patchID.x = i;
+        patchID.y = j;
+        patchIDs[i + size * j] = patchID;
+        patchHasKeypoints[i + size * j] = false;
+      }
+    }
+  }
+};
+
+/// Used for Visualisation:
+using PointsOfTrack = std::vector<Eigen::Vector2d>;
+using VisualisationTracks = std::map<TrackId, PointsOfTrack>;
 
 }  // namespace visnav
 
